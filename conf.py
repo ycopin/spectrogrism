@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Spectrogrism documentation build configuration file, created by
+# SpectroGrism documentation build configuration file, created by
 # sphinx-quickstart on Mon Nov 24 19:06:18 2014.
 #
 # This file is execfile()d with the current directory set to its

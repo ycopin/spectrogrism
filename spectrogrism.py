@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# Copyright: Copyright 2015 Euclid. copyright and intellectual property rights constraints
 
 """
 optics
@@ -57,7 +56,7 @@ SNIFS_R = OrderedDict(
     # Collimator
     COLL_F=169.549e-3,         # Focal length [m]
     COLL_E=+2.141,             # Coefficient of distortion
-    COLL_A=[-4.39879e-6, 8.91241e-10, -1.82941e-13],  # Lateral color coefficients
+    COLL_A=[-4.39879e-6, 8.91241e-10, -1.82941e-13],  # Lateral color coeffs
     # Grism
     GRISM_ON=True,             # Is prism on the way?
     GRISM_GLA='BK7',           # Prism glass
@@ -69,16 +68,16 @@ SNIFS_R = OrderedDict(
     # Camera
     CAM_F=228.014e-3,          # Focal length [m]
     CAM_E=-0.276,              # Coefficient of distortion
-    CAM_A=[+2.66486e-6, -5.52303e-10, 1.1365e-13],  # Lateral color coefficients
+    CAM_A=[+2.66486e-6, -5.52303e-10, 1.1365e-13],  # Lateral color coeffs
     # Detector
     DET_PXSIZE=15e-6,          # Detector pixel size [m]
 )
 
 #: EUCLID optical configuration, R-grism of NISP spectrograph
 #:
-#: The detector plane is tiled with 4×4 detectors of 2k×2k pixels of 18 µm; the spectrograph has
-#: a mean magnification (`NISPPlateScale`) of 0.5 approximately.  Hence a focal plane of
-#: approximately 29×29 cm².
+#: The detector plane is tiled with 4×4 detectors of 2k×2k pixels of 18
+#: µm; the spectrograph has a mean magnification (`NISPPlateScale`) of
+#: 0.5 approximately.  Hence a focal plane of approximately 29×29 cm².
 EUCLID_R = OrderedDict(
     name="EUCLID-R",
     LRANGE=(1.25e-6, 1.85e-6),  # Wavelength range [m]
@@ -142,13 +141,15 @@ class Spectrum(object):
         :param str name: optional spectrum name (e.g. "Grism transmission")
         """
 
-        self.wavelengths = N.array(wavelengths)  #: Wavelength array (sorted) [m]
-        self.fluxes = N.array(fluxes)      #: Flux array [AU]
-        self.name = name                   #: Spectrum name
+        self.wavelengths = N.array(wavelengths)  #: Wavelengths (sorted) [m]
+        self.fluxes = N.array(fluxes)            #: Fluxes [AU]
+        self.name = name                         #: Spectrum name
 
         # Some tests
-        assert len(self.wavelengths) == len(self.fluxes), "Incompatible wavelength and flux arrays"
-        assert N.all(N.diff(self.wavelengths) > 0), "Wavelengths not strictly increasing"
+        assert len(self.wavelengths) == len(self.fluxes), \
+            "Incompatible wavelength and flux arrays"
+        assert N.all(N.diff(self.wavelengths) > 0), \
+            "Wavelengths not strictly increasing"
 
         self.npx = len(self.wavelengths)  #: Number of pixels
         self.lmin = self.wavelengths[0]   #: Minimal wavelength
@@ -163,7 +164,8 @@ class Spectrum(object):
     @classmethod
     def default(cls, lrange=(0.5e-6, 1.5e-6), npx=1, name='spectrum'):
         """
-        A default spectrum, with linearly-sampled wavelengths and constant flux.
+        A default spectrum, with linearly-sampled wavelengths and
+        constant flux.
 
         :param 2-tuple lrange: wavelength range [m]
         :param int npx: number of pixels linearly sampling the spectral ramp
@@ -201,7 +203,8 @@ class FocalPointSource(object):
         if spectrum is None:
             spectrum = Spectrum.default(**kwargs)
         else:
-            assert isinstance(spectrum, Spectrum), "spectrum should be a Spectrum"
+            assert isinstance(spectrum, Spectrum), \
+                "spectrum should be a Spectrum"
         self.spectrum = spectrum  #: Spectrum
 
     def __str__(self):
@@ -212,8 +215,9 @@ class FocalPointSource(object):
 class DetectorPositions(object):
 
     """
-    A dictionary-based container for (complex) positions in the detector plane, labeled by
-    (complex) source position in the focal plane and dispersion orders.
+    A dictionary-based container for (complex) positions in the
+    detector plane, labeled by (complex) source position in the focal
+    plane and dispersion orders.
 
     .. autosummary::
 
@@ -228,32 +232,39 @@ class DetectorPositions(object):
         Initialize from spectrograph and wavelength array.
         """
 
-        assert isinstance(spectrograph, Spectrograph), "spectrograph should be a Spectrograph"
+        assert isinstance(spectrograph, Spectrograph), \
+            "spectrograph should be a Spectrograph"
         self.spectro = spectrograph #: Associated spectrograph
 
         self.lbda = N.array(wavelengths) #: Wavelengths [m]
 
-        self.spectra = {}  #: { focal_position(complex): { order: detector_positions(complexes) } }
+        #: { focal_position(complex): { order: detector_positions(complexes) } }
+        self.spectra = {} 
 
     def add_spectrum(self, focal_position, detector_positions, order):
         """
-        Add `detector_positions` corresponding to source at `focal_position` and dispersion `order`.
+        Add `detector_positions` corresponding to source at
+        `focal_position` and dispersion `order`.
 
-        :param complex focal_position: position in the focal plane of the source
-        :param numpy.ndarray detector_positions: (complex) positions in the detector plane
+        :param complex focal_position: source position in the focal plane
+        :param numpy.ndarray detector_positions: (complex) positions 
+            in the detector plane
         :param int order: dispersion order
         """
 
-        assert len(detector_positions) == len(self.lbda), "incompatible detector_positions array"
+        assert len(detector_positions) == len(self.lbda), \
+            "incompatible detector_positions array"
 
         self.spectra.setdefault(focal_position, {})[order] = detector_positions
 
-    def plot_detector(self, ax=None, focal_positions=None, orders=None, blaze=True):
+    def plot_detector(self, ax=None,
+                      focal_positions=None, orders=None, blaze=True):
         """
         Plot spectra on detector plane.
 
         :param ax: pre-existing :class:`matplotlib.pyplot.Axes` instance if any
-        :param tuple focal_positions: selection of complex focal plane 2D-positions to be plotted
+        :param tuple focal_positions: selection of complex focal plane 
+            2D-positions to be plotted
         :param tuple orders: selection of dispersion orders to be plotted
         :param blaze: if `True`, encode the blaze function in the marker size
         :return: :class:`matplotlib.pyplot.Axes`
@@ -283,7 +294,8 @@ class DetectorPositions(object):
             try:
                 source = self.spectra[fpos]
             except KeyError:
-                warnings.warn("Source {} is unknown, skipped".format(str_position(fpos)))
+                warnings.warn(
+                    "Source {} is unknown, skipped".format(str_position(fpos)))
                 continue
             if orders is None:
                 all_orders = source.keys()
@@ -293,13 +305,15 @@ class DetectorPositions(object):
                 try:
                     positions = source[order]
                 except KeyError:  # This dispersion order has not been computed
-                    warnings.warn("Source {} is not available for order {}".format(
-                        str_position(fpos), order))
+                    warnings.warn(
+                        "Source {} is not available for order {}".format(
+                            str_position(fpos), order))
                     continue
 
                 if blaze:
                     if order not in bz_functions:
-                        bz_fn = self.spectro.grism.blaze_function(self.lbda, order)
+                        bz_fn = self.spectro.grism.blaze_function(
+                            self.lbda, order)
                         bz_functions[order] = bz_fn
                     else:
                         bz_fn = bz_functions[order]
@@ -310,10 +324,10 @@ class DetectorPositions(object):
                                 s=N.maximum(50 * N.sqrt(bz_fn), 5),
                                 c=self.lbda/1e-6,
                                 cmap=cmap,
-                                marker=self.markers.get(abs(order), 'o'), edgecolor='none')
+                                marker=self.markers.get(abs(order), 'o'),
+                                edgecolor='none')
 
         if fig:
-
             fig.colorbar(sc, label=u"Wavelength [µm]")
 
         return ax
@@ -327,7 +341,8 @@ class LateralColor(object):
 
     def __init__(self, lref, coeffs):
         """
-        Initialization from reference wavelength [m] and lateral color coefficients.
+        Initialization from reference wavelength [m] and lateral color
+        coefficients.
 
         :param float lref: reference wavelength [m]
         :param list coeffs: lateral color coefficients
@@ -338,7 +353,8 @@ class LateralColor(object):
 
     def __str__(self):
 
-        return "Lateral color: lref={:.2f} µm, coeffs={}".format(self.lref*1e6, self.coeffs)
+        return "Lateral color: lref={:.2f} µm, coeffs={}".format(
+            self.lref*1e6, self.coeffs)
 
     def amplitude(self, wavelengths):
         """
@@ -348,7 +364,8 @@ class LateralColor(object):
         :return: lateral color amplitude
         """
 
-        return sum([ c*(wavelengths - self.lref)**i for i,c in enumerate(self.coeffs, start=1) ])
+        return sum([ c*(wavelengths - self.lref)**i
+                     for i,c in enumerate(self.coeffs, start=1) ])
 
 
 class Material(object):
@@ -390,7 +407,8 @@ class Material(object):
 
     def __str__(self):
 
-        return "Material: {}, n(1 µm)={:.3f}".format(self.name, self.index(1e-6))
+        return "Material: {}, n(1 µm)={:.3f}".format(
+            self.name, self.index(1e-6))
 
     def index(self, wavelengths):
         r"""
@@ -406,9 +424,9 @@ class Material(object):
         :return: refractive index
         """
 
-        lmu2 = (wavelengths / 1e-6)**2  # (wavelength [µm])**2
-        n2m1 = sum([ b / (1 - c / lmu2)
-                     for b,c in zip(self.coeffs[:3], self.coeffs[3:]) ])  # n**2 - 1
+        lmu2 = (wavelengths / 1e-6)**2    # (wavelength [µm])**2
+        n2m1 = sum([ b / (1 - c / lmu2)   # n**2 - 1
+                     for b,c in zip(self.coeffs[:3], self.coeffs[3:]) ])
 
         return N.sqrt(n2m1 + 1)
 
@@ -438,11 +456,12 @@ class CameraCollimator(object):
         .. Note:: We restrict the model to a 2nd-order distortion (in r²).
         """
 
-        assert isinstance(lcolor, LateralColor), "lcolor should be a LateralColor"
+        assert isinstance(lcolor, LateralColor), \
+            "lcolor should be a LateralColor"
 
-        self.flength = flength  #: Focal length [m]
+        self.flength = flength        #: Focal length [m]
         self.distortion = distortion  #: Distortion coefficient
-        self.lcolor = lcolor  #: Lateral color
+        self.lcolor = lcolor          #: Lateral color
 
     def __str__(self):
 
@@ -452,7 +471,8 @@ class CameraCollimator(object):
     @staticmethod
     def rect2pol(position):
         r"""
-        Convert position :math:`x + jy` into modulus :math:`r` and phase :math:`\phi`.
+        Convert position :math:`x + jy` into modulus :math:`r` and
+        phase :math:`\phi`.
 
         :param complex position: 2D-position(s) :math:`x + jy`
         :return: (r, phi) [rad]
@@ -478,7 +498,8 @@ class CameraCollimator(object):
         """
         Invert :math:`y = x(ex^2 + b)`.
 
-        :func:`numpy.poly1d` defines polynomial :math:`e x^3 + 0 x^2 + b x - y = 0`.
+        :func:`numpy.poly1d` defines polynomial :math:`e x^3 + 0 x^2 +
+        b x - y = 0`.
 
         :return: real solution (or NaN if none)
         """
@@ -530,7 +551,9 @@ class Collimator(CameraCollimator):
             distortion = config['COLL_E']
             lcolor = LateralColor(config['LREF'], config['COLL_A'])
         except KeyError as err:
-            raise KeyError("Invalid configuration file: missing key {!r}".format(err.args[0]))
+            raise KeyError(
+                "Invalid configuration file: missing key {!r}".format(
+                    err.args[0]))
 
         super(Collimator, self).__init__(flength, distortion, lcolor)
 
@@ -557,7 +580,8 @@ class Collimator(CameraCollimator):
 
         r, phi = self.rect2pol(position)  # Modulus [m] and phase [rad]
         rr = r / self.flength     # Normalized radius
-        tmp = self.distortion * rr**2 + self.lcolor.amplitude(wavelengths) / gamma
+        tmp = (self.distortion * rr**2 +
+               self.lcolor.amplitude(wavelengths) / gamma)
         tantheta = rr * (1 + tmp)
 
         return self.pol2rect(tantheta, phi + N.pi)  # Direction
@@ -571,11 +595,11 @@ class Collimator(CameraCollimator):
 
         tantheta, phi = self.rect2pol(direction)
 
-        r = self.flength * self.invert_camcoll(tantheta,
-                                               self.distortion,
-                                               1 + self.lcolor.amplitude(wavelength) / gamma)
+        rovf = self.invert_camcoll(tantheta,
+                                   self.distortion,
+                                   1 + self.lcolor.amplitude(wavelength)/gamma)
 
-        return self.pol2rect(r, phi + N.pi)  # Position
+        return self.pol2rect(rovf * self.flength, phi + N.pi)  # Position
 
 
 class Camera(CameraCollimator):
@@ -583,8 +607,9 @@ class Camera(CameraCollimator):
     """
     Converts a 2D-direction into a 2D-position (in the detector plane).
 
-    .. Note:: the detector coordinate axes are flipped, so that sources remain in the same
-       quadrant in the focal *and* detector planes.
+    .. Note:: the detector coordinate axes are flipped, so that
+       sources remain in the same quadrant in the focal *and* detector
+       planes.
 
     .. autosummary::
 
@@ -604,7 +629,9 @@ class Camera(CameraCollimator):
             distortion = config['CAM_E']
             lcolor = LateralColor(config['LREF'], config['CAM_A'])
         except KeyError as err:
-            raise KeyError("Invalid configuration file: missing key {!r}".format(err.args[0]))
+            raise KeyError(
+                "Invalid configuration file: missing key {!r}".format(
+                    err.args[0]))
 
         super(Camera, self).__init__(flength, distortion, lcolor)
 
@@ -627,10 +654,10 @@ class Camera(CameraCollimator):
 
         tantheta, phi = self.rect2pol(direction)
 
-        r = 1 + self.distortion * tantheta**2 + self.lcolor.amplitude(wavelengths)
-        r *= tantheta * self.flength
+        rovf = (1 + self.distortion * tantheta**2 +
+                self.lcolor.amplitude(wavelengths)) * tantheta
 
-        return self.pol2rect(r, phi + N.pi)  # Flipped position
+        return self.pol2rect(rovf*self.flength, phi + N.pi)  # Flipped position
 
     def backward(self, position, wavelength):
         """
@@ -655,8 +682,8 @@ class Prism(object):
 
     .. Note::
 
-       * The entry surface is roughly perpendicular (up to the tilt angles) to the optical axis
-         *Oz*.
+       * The entry surface is roughly perpendicular (up to the tilt
+         *angles) to the optical axis Oz*.
        * The apex (prism angle) is aligned with the *x*-axis
 
     .. autosummary::
@@ -694,9 +721,12 @@ class Prism(object):
 
     @staticmethod
     def rotation(x, y, theta):
-        """2D-rotation of position around origin with direct angle theta [rad]."""
+        """
+        2D-rotation of position around origin with direct angle theta [rad].
+        """
 
-        p = (N.array(x) + 1j*N.array(y)) * N.exp(1j*theta) # Rotation in the complex plane
+        # Rotation in the complex plane
+        p = (N.array(x) + 1j*N.array(y)) * N.exp(1j*theta)
 
         return (p.real, p.imag)
 
@@ -727,7 +757,8 @@ class Prism(object):
     @staticmethod
     def refraction(xyz, n1, n2):
         """
-        Refraction law from medium 1 to medium 2, by plane interface :math:`(Oxy)`.
+        Refraction law from medium 1 to medium 2, by plane interface
+        :math:`(Oxy)`.
 
         :param 3-tuple xyz: input 3D-direction (from medium 1)
         :param float n1: Refractive index of medium 1
@@ -825,7 +856,8 @@ class Grating(object):
 class Grism(object):
 
     """
-    An association of a :class:`Prism` and a :class:`Grating` glued on the exit surface.
+    An association of a :class:`Prism` and a :class:`Grating` glued on
+    the exit surface.
 
     .. autosummary::
 
@@ -851,7 +883,9 @@ class Grism(object):
             grating_material = config['GRISM_GRA']
             blaze = config['GRISM_BLA']
         except KeyError as err:
-            raise KeyError("Invalid configuration file: missing key {!r}".format(err.args[0]))
+            raise KeyError(
+                "Invalid configuration file: missing key {!r}".format(
+                    err.args[0]))
 
         self.prism = Prism(A, Material(prism_material))
         self.grating = Grating(rho, Material(grating_material), blaze)
@@ -887,14 +921,15 @@ class Grism(object):
 
         with:
 
-        - :math:`\rho \lambda \Theta = \pi \cos\gamma \times (n_g\sin i - \sin r)`,
-          :math:`\gamma` being the blaze angle and :math:`\rho` the line density
-          of the grating;
-        - :math:`i = \alpha' - \gamma` where :math:`n_g \sin\alpha' = n_p\sin A`
-          with :math:`n_p` and :math:`n_g` the refraction index of prism glass and
-          grating resine respectively and :math:`A` the grism angle
-        - :math:`r = \beta - \gamma` where :math:`\sin\beta = n_p\sin A - m\rho\lambda`
-          with :math:`m` the diffraction order.
+        - :math:`\rho \lambda \Theta = \pi \cos\gamma \times (n_g\sin
+          i - \sin r)`, :math:`\gamma` being the blaze angle and
+          :math:`\rho` the line density of the grating;
+        - :math:`i = \alpha' - \gamma` where :math:`n_g \sin\alpha' =
+          n_p\sin A` with :math:`n_p` and :math:`n_g` the refraction
+          index of prism glass and grating resine respectively and
+          :math:`A` the grism angle
+        - :math:`r = \beta - \gamma` where :math:`\sin\beta = n_p\sin
+          A - m\rho\lambda` with :math:`m` the diffraction order.
 
         :param numpy.ndarray wavelengths: wavelengths [m]
         :param int order: dispersion order
@@ -911,7 +946,8 @@ class Grism(object):
         i = N.arcsin(npsinA / ng) - self.grating.blaze # [rad]
         r = N.arcsin(npsinA - order * rholbda) - self.grating.blaze # [rad]
 
-        theta = N.pi / rholbda * N.cos(self.grating.blaze) * (ng*N.sin(i) - N.sin(r))
+        theta = (N.pi / rholbda * N.cos(self.grating.blaze) *
+                 (ng*N.sin(i) - N.sin(r)))
         bf = (N.sin(theta)/theta)**2
 
         return bf
@@ -931,7 +967,9 @@ class Grism(object):
         costheta = N.sqrt(1/(1 + tan2))
         sintheta = N.sqrt(tan2/(1 + tan2))
 
-        return N.vstack((N.cos(phi)*sintheta, N.sin(phi)*sintheta, costheta)).squeeze()
+        return N.vstack((N.cos(phi)*sintheta,
+                         N.sin(phi)*sintheta,
+                         costheta)).squeeze()
 
     @staticmethod
     def xyz2direction(xyz):
@@ -969,7 +1007,8 @@ class Grism(object):
         xyz = self.prism.rotation_z(xyz, self.prism.tilts[2])
 
         # Vacuum/prism interface
-        xyz = self.prism.refraction(xyz, 1, self.prism.material.index(wavelengths))
+        xyz = self.prism.refraction(xyz, 1,
+                                    self.prism.material.index(wavelengths))
 
         # Prism angle
         xyz = self.prism.rotation_x(xyz, self.prism.angle)
@@ -1021,7 +1060,8 @@ class Grism(object):
         xyz = self.prism.rotation_x(xyz, -self.prism.angle)
 
         # Prism/vacuum interface
-        xyz = self.prism.refraction(xyz, self.prism.material.index(wavelength), 1)
+        xyz = self.prism.refraction(xyz,
+                                    self.prism.material.index(wavelength), 1)
 
         # Back to original orientation
         xyz = self.prism.rotation_z(xyz, -self.prism.tilts[2])
@@ -1066,7 +1106,8 @@ class Grism(object):
 class Spectrograph(object):
 
     """
-    Spectrograph, an association of a :class:`Collimator`, a :class:`Grism` and a :class:`Camera`.
+    Spectrograph, an association of a :class:`Collimator`, a
+    :class:`Grism` and a :class:`Camera`.
 
     .. autosummary::
 
@@ -1129,7 +1170,8 @@ class Spectrograph(object):
         r"""
         Spectral dispersion (approximate) [m/m].
 
-        This is given by :math:`D(\lambda) = (\mathrm{d}y/\mathrm{d}\lambda)^{-1}` with
+        This is given by :math:`D(\lambda) = (\mathrm{d}y /
+        \mathrm{d}\lambda)^{-1}` with
 
         .. math:: y = f_{\mathrm{cam}}\tan\beta
 
@@ -1147,11 +1189,13 @@ class Spectrograph(object):
         def yoverf(l):
 
             sinbeta = (order * self.grism.grating.rho * 1e3 * l -
-                       self.grism.prism.material.index(l) * N.sin(self.grism.prism.angle))
+                       self.grism.prism.material.index(l) *
+                       N.sin(self.grism.prism.angle))
 
             return N.tan(N.arcsin(sinbeta))
 
-        dydl = derivative(yoverf, wavelength, dx=wavelength*eps) * self.camera.flength
+        dydl = (derivative(yoverf, wavelength, dx=wavelength*eps) *
+                self.camera.flength)
 
         return 1/dydl
 
@@ -1166,20 +1210,24 @@ class Spectrograph(object):
         :rtype: :class:`numpy.ndarray`
         """
 
-        assert isinstance(source, FocalPointSource), "source should be a FocalPointSource"
+        assert isinstance(source, FocalPointSource), \
+            "source should be a FocalPointSource"
 
         wavelengths = source.spectrum.wavelengths
 
-        directions = self.collimator.forward(source.position, wavelengths, self.gamma)
+        directions = self.collimator.forward(
+            source.position, wavelengths, self.gamma)
         if self.grism_on:
-            directions = self.grism.forward(directions, wavelengths, order=order)
+            directions = self.grism.forward(
+                directions, wavelengths, order=order)
         positions = self.camera.forward(directions, wavelengths)
 
         return positions
 
     def backward(self, position, wavelength, order=1):
         """
-        Backward light propagation from a detector-plane 2D-position and wavelength.
+        Backward light propagation from a detector-plane 2D-position
+        and wavelength.
 
         :param complex position: 2D-position in the detector plane [m]
         :param float wavelength: wavelength [m]
@@ -1200,12 +1248,14 @@ class Spectrograph(object):
         Test forward and backward propagation in spectrograph.
 
         :param complex position: tested 2D-position in the focal plane [m]
-        :param int npx: number of wavelengths to be tested within the spectral domain
+        :param int npx: number of wavelengths to be tested within
+            spectral domain
         :param int order: tested dispersion order
         """
 
         # Test source
-        source = FocalPointSource(position, lrange=self.config['LRANGE'], npx=npx)
+        source = FocalPointSource(position,
+                                  lrange=self.config['LRANGE'], npx=npx)
         wavelengths = source.spectrum.wavelengths
         if verbose:
             print(" SPECTROGRAPH TEST ".center(40, '='))
@@ -1213,12 +1263,14 @@ class Spectrograph(object):
             print("Wavelengths [µm]:", wavelengths*1e6)
 
         # Forward step-by-step
-        fdirections = self.collimator.forward(source.position, wavelengths, self.gamma)
+        fdirections = self.collimator.forward(source.position,
+                                              wavelengths, self.gamma)
         if verbose:
             print("Directions (coll, forward) [x1e6]:", fdirections*1e6)
 
         if self.grism_on:
-            fdirections = self.grism.forward(fdirections, wavelengths, order=order)
+            fdirections = self.grism.forward(fdirections,
+                                             wavelengths, order=order)
             if verbose:
                 print("Directions (grism, forward) [x1e6]:", fdirections*1e6)
 
@@ -1226,10 +1278,12 @@ class Spectrograph(object):
         if verbose:
             print("Positions (detector) [µm]:", dpositions*1e6)
 
-        for lbda, dpos in zip(wavelengths, dpositions):  # Loop over positions in detector plane
+        # Loop over positions in detector plane
+        for lbda, dpos in zip(wavelengths, dpositions):
             # Backward step-by-step
             if verbose:
-                print("Test position (detector) [µm]:", dpos*1e6, "Wavelength [µm]:", lbda*1e6)
+                print("Test position (detector) [µm]:", dpos*1e6,
+                      "Wavelength [µm]:", lbda*1e6)
             bdirection = self.camera.backward(dpos, lbda)
             if verbose:
                 print("Direction (camera, backward) [x1e6]:", bdirection*1e6)
@@ -1237,12 +1291,14 @@ class Spectrograph(object):
                 bdirection = self.grism.backward(bdirection, lbda, order=order)
                 if verbose:
                     print("Direction (grism, backward) [x1e6]:", bdirection*1e6)
-            fposition = self.collimator.backward(bdirection, lbda, spectro.gamma)
+            fposition = self.collimator.backward(bdirection,
+                                                 lbda, spectro.gamma)
             if verbose:
                 print("Focal-plane position (backward) [µm]:", fposition*1e6)
                 print("Source position (reminder) [µm]:", source.position*1e6)
 
-            assert N.isclose(source.position, fposition), "Backward modeling does not match"
+            assert N.isclose(source.position, fposition), \
+                "Backward modeling does not match"
 
     def simulate(self, simu):
         """
@@ -1280,9 +1336,9 @@ class Spectrograph(object):
             # Update source position
             source.position = xy
             for order in orders:  # Loop over dispersion orders
-                dpos = self.forward(source, order)  # Position in the detector plane
-                if det_angle:
-                    dpos *= N.exp(1j*det_angle)     # Rotation in the detector plane
+                dpos = self.forward(source, order)  # Detector plane position
+                if det_angle:     # Rotation in the detector plane
+                    dpos *= N.exp(1j*det_angle)
                 detector.add_spectrum(source.position, dpos, order=order)
 
         return detector
@@ -1318,7 +1374,8 @@ if __name__ == '__main__':
         # CAM_A = (0, 0, 0),
         )
     if OVERRIDE:
-        print("WARNING: overriding configuration with test values {}".format(OVERRIDE))
+        warnings.warn(
+            "overriding configuration with test values {}".format(OVERRIDE))
         OVERRIDE.setdefault( 'name', config['name'] + ' (overrided)')
         config.update(OVERRIDE)
 
