@@ -9,5 +9,4 @@ distutils.core.setup(
     license='LGPL v3.0',
     author='Yannick Copin',
     author_email='y.copin@ipnl.in2p3.fr',
-    install_requires=['numpy', 'matplotlib'],
 )
