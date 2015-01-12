@@ -1,0 +1,81 @@
+.. spectrogrism documentation master file, created by
+   sphinx-quickstart on Mon Nov 24 19:06:18 2014.
+   You can adapt this file completely to your liking, but it should at least
+   contain the root `toctree` directive.
+
+=================================
+Grism-based Spectrograph Modeling
+=================================
+
+:Version: |version| of |today|
+:Author: Yannick Copin <y.copin@ipnl.in2p3.fr>
+
+.. highlight:: python
+   :linenothreshold: 3
+
+:Abstract: This module implements the spectrograph optical model used for the *SuperNova Integral
+           Field Spectrograph* [Lantz04]_ data-reduction pipeline, and presented in [Copin00]_. It
+           provides a flexible chromatic mapping between the input focal plane and the output
+           detector plane, based on an arbitrarily complex semi-empirical ray-tracing model of the
+           key optical elements defining the spectrograph (collimator, prism, grating, camera),
+           described by a restricted number of physically-motivated and *ad-hoc* parameters.
+
+Optical modeling
+================
+
+Optical elements
+----------------
+
+The :class:`optics.Spectrograph` model includes optical elements between the input focal plane and
+the output detector plane:
+
+- a :class:`optics.Collimator`, which converts a position (in the focal plane) into a direction
+- a :class:`optics.Grism` (an association of a :class:`optics.Prism` and a :class:`optics.Grating`),
+  which converts a direction into another direction depending on wavelength and dispersion order,
+- a :class:`optics.Camera`, which converts a direction into a position (in the detector plane).
+
+:class:`optics.Collimator` and :class:`optics.Camera` include :math:`r^2`-distortion and lateral
+colors. :class:`optics.Prism` includes 3D-tilts.
+
+.. figure:: SNIFS-R.*
+
+   **Figure:** Modeling of 5×5 sources in the detector plane at 10 individual wavelengths, using the
+   SNIFS-R optical configuration.  Orders -1 (very top), 0 (undispersed), 1 (middle) and 2 (bottom)
+   are represented.  The size of the symbol somehow encodes the blaze function of the spectrograph.
+
+Positions and directions
+------------------------
+
+* A 2D-position :math:`(x, y)` is encoded in complex number :math:`x + jy`.
+* A 2D-direction :math:`(\theta, \phi)` (where :math:`\theta` is the angle between the optical axis
+  :math:`Oz` and the propagation direction, and :math:`\phi` the phase in the transverse plane
+  :math:`(Oxy)`) is encoded in complex number :math:`\tan(\theta) \exp(j\phi)`.
+* A 3D-direction is encoded by the coordinates of the unit-vector :math:`(x, y, z)`.
+
+References
+----------
+
+* :download:`SNIFS optical parametrization <SNFactory-SNIFS-02-002.pdf>` (SNfactory Technical
+  Documentation)
+* :download:`Redefinition of the blue grating <SNFactory-SNIFS-02-004.pdf>` (SNfactory Technical
+  Documentation)
+* `Euclid Mission Database <http://euclid.esac.esa.int/epdb/>`_
+
+.. [Copin00] `2000PhDT.........6C <https://tel.archives-ouvertes.fr/tel-00001338/fr/>`_
+.. [Lantz04] `2004SPIE.5249..146L <http://adsabs.harvard.edu/abs/2004SPIE.5249..146L>`_
+
+Code documentation
+==================
+
+.. toctree::
+   :maxdepth: 2
+
+   optics
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
+
