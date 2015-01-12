@@ -2,7 +2,7 @@ import distutils.core
 
 distutils.core.setup(
     name='spectrogrism',
-    description='Grism-based spectrograph modeling'
+    description='Grism-based spectrograph modeling',
     version='0.1',
     py_modules=['spectrogrism'],
     url='https://github.com/ycopin/spectrogrism',
