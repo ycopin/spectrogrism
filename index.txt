@@ -13,16 +13,24 @@ Grism-based Spectrograph Modeling
 .. highlight:: python
    :linenothreshold: 3
 
-This module implements the spectrograph optical model used for the *SuperNova
-Integral Field Spectrograph* [Lantz04]_ data-reduction pipeline, and presented
-in [Copin00]_. It provides a flexible chromatic mapping between the input focal
-plane and the output detector plane, based on an arbitrarily complex
-semi-empirical ray-tracing model of the key optical elements defining the
-spectrograph (collimator, prism, grating, camera), described by a restricted
-number of physically-motivated and *ad-hoc* parameters.
+:Abstract: This module implements the spectrograph optical model used for the
+    *SuperNova Integral Field Spectrograph* [Lantz04]_ data-reduction pipeline,
+    and presented in [Copin00]_.  It provides a flexible chromatic mapping
+    between the input focal plane and the output detector plane, based on an
+    semi-empirical simplified ray-tracing model of the key optical
+    elements defining the spectrograph (collimator, prism, grating, camera),
+    described by a restricted number of physically-motivated distortion 
+    parameters.
 
 Optical modeling
 ================
+
+The model only handles the *geometrical* part of the light propagation through
+the spectrograph, i.e. provides a mapping between a wavelength and a position
+in the entrance focal plane to a position in the detector plane (at the output
+focal plane).  It is therefore assumed all the PSF and scattered light effects
+(related to focus, axial chromatic aberrations, diffusion, etc.) are modeled
+independently.
 
 Optical elements
 ----------------
@@ -38,9 +46,9 @@ input focal plane and the output detector plane:
 - a :class:`optics.Camera`, which converts a direction into a position (in the
   detector plane).
 
-:class:`optics.Collimator` and :class:`optics.Camera` include
-:math:`r^2`-distortion and lateral colors. :class:`optics.Prism` includes
-3D-tilts.
+Both :class:`optics.Collimator` and :class:`optics.Camera` include geometric
+radial distortion and lateral colors (transverse chromatic aberrations).
+:class:`optics.Prism` includes 3D-tilts.
 
 .. figure:: SNIFS-R.*
 

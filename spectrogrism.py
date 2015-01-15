@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
-optics
-------
+spectrogrism
+------------
 
 .. autosummary::
 
@@ -151,15 +151,12 @@ class Spectrum(object):
         assert N.all(N.diff(self.wavelengths) > 0), \
             "Wavelengths not strictly increasing"
 
-        self.npx = len(self.wavelengths)  #: Number of pixels
-        self.lmin = self.wavelengths[0]   #: Minimal wavelength
-        self.lmax = self.wavelengths[-1]  #: Maximal wavelength
-
     def __str__(self):
 
         return "{}{:d} px within {:.2f}-{:.2f} µm".format(
             self.name + ': ' if self.name else '',
-            self.npx, self.lmin * 1e6, self.lmax * 1e6)
+            len(self.wavelengths),
+            self.wavelengths[0] * 1e6, self.wavelengths[-1] * 1e6)
 
     @classmethod
     def default(cls, lrange=(0.5e-6, 1.5e-6), npx=1, name='spectrum'):
@@ -238,8 +235,8 @@ class DetectorPositions(object):
 
         self.lbda = N.array(wavelengths) #: Wavelengths [m]
 
-        #: { focal_position(complex): { order: detector_positions(complexes) } }
-        self.spectra = {} 
+        #: { f_position (complex): { order: [ d_positions (complexes) ] } }
+        self.spectra = {}
 
     def add_spectrum(self, focal_position, detector_positions, order):
         """
@@ -247,7 +244,7 @@ class DetectorPositions(object):
         `focal_position` and dispersion `order`.
 
         :param complex focal_position: source position in the focal plane
-        :param numpy.ndarray detector_positions: (complex) positions 
+        :param numpy.ndarray detector_positions: (complex) positions
             in the detector plane
         :param int order: dispersion order
         """
@@ -263,7 +260,7 @@ class DetectorPositions(object):
         Plot spectra on detector plane.
 
         :param ax: pre-existing :class:`matplotlib.pyplot.Axes` instance if any
-        :param tuple focal_positions: selection of complex focal plane 
+        :param tuple focal_positions: selection of complex focal plane
             2D-positions to be plotted
         :param tuple orders: selection of dispersion orders to be plotted
         :param blaze: if `True`, encode the blaze function in the marker size
@@ -337,6 +334,13 @@ class LateralColor(object):
 
     """
     A description of lateral color chromatic distortion.
+
+    The transverse chromatic aberration (so-called *lateral color*) occurs when
+    different wavelengths are focused at different positions in the focal
+    plane.
+
+    **Reference:** `Chromatic aberration
+    <https://en.wikipedia.org/wiki/Chromatic_aberration>`_
     """
 
     def __init__(self, lref, coeffs):
@@ -371,7 +375,11 @@ class LateralColor(object):
 class Material(object):
 
     """
-    Optical material, which index is described by its Sellmeier coefficients.
+    Optical material, which refractive index is described by its Sellmeier
+    coefficients.
+
+    **Reference:** `Sellmeier equation
+    <https://en.wikipedia.org/wiki/Sellmeier_equation>`_
     """
 
     #: Sellmeier coefficients [B1, B2, B3, C1, C2, C3] of known materials.
@@ -453,7 +461,13 @@ class CameraCollimator(object):
         :param float distortion: distortion coefficient
         :param lcolor: :class:`LateralColor`
 
-        .. Note:: We restrict the model to a 2nd-order distortion (in r²).
+        .. Note:: We restrict here the model to a quadratic radial geometric
+           distortion, responsible for barrel and pincushion distortions.
+           Higher order radial distortions or tangential distortions could be
+           implemented if needed.
+
+           **Reference:** `Distortion
+           <https://en.wikipedia.org/wiki/Distortion_%28optics%29>`_
         """
 
         assert isinstance(lcolor, LateralColor), \
@@ -498,7 +512,7 @@ class CameraCollimator(object):
         """
         Invert :math:`y = x(ex^2 + b)`.
 
-        :func:`numpy.poly1d` defines polynomial :math:`e x^3 + 0 x^2 +
+        :func:`numpy.poly1d` solves polynomial equation :math:`e x^3 + 0 x^2 +
         b x - y = 0`.
 
         :return: real solution (or NaN if none)
@@ -569,7 +583,14 @@ class Collimator(CameraCollimator):
 
         .. math::
 
-            \tan\theta = r/f \times (1 + e(r/f)^2 + a/\gamma)
+            \tan\theta = r/f \times (1 + e(r/f)^2 + a(\lambda)/\gamma)
+
+        where:
+
+        * *f* is the focal length
+        * *e* is the :math:`r^2` radial distortion coefficient
+        * :math:`a(\lambda)` is the lateral color
+        * :math:`\gamma` is the spectrograph magnification
 
         :param complex position: 2D-position in the focal plane [m]
         :param numpy.ndarray wavelengths: wavelengths [m]
@@ -645,7 +666,13 @@ class Camera(CameraCollimator):
 
         The camera equation is:
 
-        .. math:: r/f = \tan\theta  \times (1 + e\tan^2\theta + a)
+        .. math:: r/f = \tan\theta  \times (1 + e\tan^2\theta + a(\lambda))
+
+        where:
+
+        * *f* is the focal length
+        * *e* is the :math:`r^2` radial distortion coefficient
+        * :math:`a(\lambda)` is the lateral color
 
         :param complex direction: 2D-direction [rad]
         :param numpy.ndarray wavelengths: wavelengths [m]
@@ -1398,4 +1425,3 @@ if __name__ == '__main__':
     ax.set_aspect('auto')
     ax.axis(N.array([-2000, 2000, -4000, 4000])*config['DET_PXSIZE']/1e-6)
     P.show()
-
