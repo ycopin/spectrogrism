@@ -1,6 +1,7 @@
-import distutils.core
+#from distutils.core import setup
+from setuptools import setup # required for 'install_requires'
 
-distutils.core.setup(
+setup(
     name='spectrogrism',
     description='Grism-based spectrograph modeling',
     version='0.1',
