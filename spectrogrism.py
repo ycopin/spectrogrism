@@ -24,6 +24,7 @@ spectrogrism
 from __future__ import division, print_function
 
 __author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
+__version__ = "0.1"
 __docformat__ = 'restructuredtext en'
 
 from collections import OrderedDict  # Used for configuration
