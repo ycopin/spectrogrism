@@ -1,4 +1,6 @@
-/_build/
-/build/
 *~
 *.pyc
+/_build/
+/build/
+/spectrogrism.egg-info/
+/dist/
