@@ -73,8 +73,7 @@ copyright = u'2015, Yannick Copin'
 # built documents.
 #
 # The short X.Y version.
-import spectrogrism
-version = spectrogrism.__version__
+version = '0.1'
 # The full version, including alpha/beta/rc tags.
 release = version
 
