@@ -1,5 +1,4 @@
-#from distutils.core import setup
-from setuptools import setup # required for 'install_requires'
+from setuptools import setup
 
 setup(
     name='spectrogrism',
@@ -10,6 +9,6 @@ setup(
     license='LGPL v3.0',
     author='Yannick Copin',
     author_email='y.copin@ipnl.in2p3.fr',
-    requires=['numpy', 'matplotlib'],
-    install_requires=['numpy', 'matplotlib'],
+    #requires=['numpy', 'matplotlib'],
+    #install_requires=['numpy', 'matplotlib'],
 )
