@@ -35,20 +35,21 @@ independently.
 Optical elements
 ----------------
 
-The :class:`optics.Spectrograph` model includes optical elements between the
-input focal plane and the output detector plane:
+The :class:`spectrogrism.Spectrograph` model includes optical elements between
+the input focal plane and the output detector plane:
 
-- a :class:`optics.Collimator`, which converts a position (in the focal plane)
-  into a direction
-- a :class:`optics.Grism` (an association of a :class:`optics.Prism` and a
-  :class:`optics.Grating`), which converts a direction into another direction
-  depending on wavelength and dispersion order,
-- a :class:`optics.Camera`, which converts a direction into a position (in the
-  detector plane).
+- a :class:`spectrogrism.Collimator`, which converts a position (in the focal
+  plane) into a direction
+- a :class:`spectrogrism.Grism` (an association of a
+  :class:`spectrogrism.Prism` and a :class:`spectrogrism.Grating`), which
+  converts a direction into another direction depending on wavelength and
+  dispersion order,
+- a :class:`spectrogrism.Camera`, which converts a direction into a position
+  (in the detector plane).
 
-Both :class:`optics.Collimator` and :class:`optics.Camera` include geometric
-radial distortion and lateral colors (transverse chromatic aberrations).
-:class:`optics.Prism` includes 3D-tilts.
+Both :class:`spectrogrism.Collimator` and :class:`spectrogrism.Camera` include
+geometric radial distortion and lateral colors (transverse chromatic
+aberrations).  :class:`spectrogrism.Prism` includes 3D-tilts.
 
 .. figure:: SNIFS-R.*
 
@@ -94,6 +95,7 @@ Indices and tables
 ==================
 
 * :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+
+.. * :ref:`modindex`
+.. * :ref:`search`
 

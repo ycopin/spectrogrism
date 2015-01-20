@@ -213,6 +213,8 @@ class FocalPointSource(object):
 class DetectorPositions(object):
 
     """
+    A container for positions on the detector.
+
     A dictionary-based container for (complex) positions in the
     detector plane, labeled by (complex) source position in the focal
     plane and dispersion orders.
@@ -376,8 +378,9 @@ class LateralColor(object):
 class Material(object):
 
     """
-    Optical material, which refractive index is described by its Sellmeier
-    coefficients.
+    Optical material.
+
+    The refractive index is described by its Sellmeier coefficients.
 
     **Reference:** `Sellmeier equation
     <https://en.wikipedia.org/wiki/Sellmeier_equation>`_
@@ -884,8 +887,7 @@ class Grating(object):
 class Grism(object):
 
     """
-    An association of a :class:`Prism` and a :class:`Grating` glued on
-    the exit surface.
+    A :class:`Prism` and a :class:`Grating` on the exit surface.
 
     .. autosummary::
 
@@ -1134,8 +1136,7 @@ class Grism(object):
 class Spectrograph(object):
 
     """
-    Spectrograph, an association of a :class:`Collimator`, a
-    :class:`Grism` and a :class:`Camera`.
+    A :class:`Collimator`, a :class:`Grism` and a :class:`Camera`.
 
     .. autosummary::
 
@@ -1374,12 +1375,20 @@ class Spectrograph(object):
 # Utility functions =======================================
 
 def str_position(position):
-    """WARNING: work on a single (complex) position."""
+    """
+    Pretty-printer of a complex position.
+
+    .. warning:: work on a single (complex) position.
+    """
 
     return "{:+.1f} x {:+.1f} µm".format(position.real*1e6, position.imag*1e6)
 
 def str_direction(direction):
-    """WARNING: work on a single (complex) direction."""
+    """
+    Pretty-printer of a complex direction.
+
+    .. warning:: work on a single (complex) direction.
+    """
 
     tantheta, phi = CameraCollimator.rect2pol(direction)
     return "{:+.2f} x {:+.2f} arcmin".format(
