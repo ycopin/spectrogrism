@@ -39,13 +39,18 @@ extensions = [
     'sphinx.ext.autosummary',
 ]
 
-# Extension configuration
+# Autodoc configuration
 autoclass_content = "both"              # Insert __init__ method docstring
 autodoc_member_order = "bysource"       # Keep source order
 
 # Using mocks for libraries that depend on C modules
 # http://docs.readthedocs.org/en/latest/faq.html#i-get-import-errors-on-libraries-that-depend-on-c-modules
-# http://blog.rtwilson.com/how-to-make-your-sphinx-documentation-compile-with-readthedocs-when-youre-using-numpy-and-scipy/
+
+MOCK_MODULES = ['numpy', 'matplotlib', 'matplotlib.pyplot', 'seaborn']
+
+# autodoc_mock_imports is available from sphinx-1.3 only, rtfm.org uses 1.2
+# autodoc_mock_imports = MOCK_MODULES
+
 from mock import Mock as MagicMock
 
 class Mock(MagicMock):
@@ -53,11 +58,9 @@ class Mock(MagicMock):
     def __getattr__(cls, name):
         return Mock()
 
-MOCK_MODULES = ['numpy', 'matplotlib', 'matplotlib.pyplot']
 sys.modules.update( (mod_name, Mock()) for mod_name in MOCK_MODULES )
 
-# autodoc_mock_imports = ['numpy', 'matplotlib', 'matplotlib.pyplot']
-
+# TODO configuration
 todo_include_todos = True
 
 # Intersphinx configuration

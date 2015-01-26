@@ -15,6 +15,7 @@ spectrogrism
    CameraCollimator
    Collimator
    Camera
+   Telescope
    Prism
    Grating
    Grism
@@ -54,9 +55,12 @@ SNIFS_R = OrderedDict(
     name="SNIFS-R",            # Configuration name
     LREF=0.76e-6,              # Reference wavelength [m]
     LRANGE=(0.5e-6, 1.02e-6),  # Wavelength range [m]
+    # Telescope
+    TEL_F=22.5,                # Focal length [m]
+    TEL_E=0.,                  # r² distortion coefficient
     # Collimator
     COLL_F=169.549e-3,         # Focal length [m]
-    COLL_E=+2.141,             # Coefficient of distortion
+    COLL_E=+2.141,             # r² distortion coefficient
     COLL_A=[-4.39879e-6, 8.91241e-10, -1.82941e-13],  # Lateral color coeffs
     # Grism
     GRISM_ON=True,             # Is prism on the way?
@@ -68,7 +72,7 @@ SNIFS_R = OrderedDict(
     GRISM_BLA=15./RAD2DEG,     # Blaze angle [rad]
     # Camera
     CAM_F=228.014e-3,          # Focal length [m]
-    CAM_E=-0.276,              # Coefficient of distortion
+    CAM_E=-0.276,              # r² distortion coefficient
     CAM_A=[+2.66486e-6, -5.52303e-10, 1.1365e-13],  # Lateral color coeffs
     # Detector
     DET_PXSIZE=15e-6,          # Detector pixel size [m]
@@ -96,7 +100,7 @@ TEST = OrderedDict(
     LRANGE=(1.25e-6, 1.85e-6),  # Wavelength range [m]
     # Collimator
     COLL_F=300e-3,             # Focal length [m]
-    COLL_E=+2.,                # Coefficient of distortion
+    COLL_E=+2.,                # r² distortion coefficient
     COLL_A=[-4e-6, +9e-10, -2e-13],  # Lateral color coefficients
     # Grism
     GRISM_ON=True,             # Is prism on the way?
@@ -107,7 +111,7 @@ TEST = OrderedDict(
     GRISM_BLA=15./RAD2DEG,     # Blaze angle [rad]
     # Camera
     CAM_F=150e-3,              # Focal length [m]
-    CAM_E=-0.3,                # Coefficient of distortion
+    CAM_E=-0.3,                # r² distortion coefficient
     CAM_A=[+3e-6, -6e-10, +1e-13],  # Lateral color coefficients
     # Detector
     DET_PXSIZE=18e-6           # Detector pixel size [m]
@@ -448,7 +452,7 @@ class Material(object):
 class CameraCollimator(object):
 
     """
-    Either a :class:`Camera` or a :class:`Collimator`.
+    An optical system converting to and fro directions and positions.
 
     .. autosummary::
 
@@ -462,7 +466,7 @@ class CameraCollimator(object):
         Initialize the optical component from optical parameters.
 
         :param float flength: focal length [m]
-        :param float distortion: distortion coefficient
+        :param float distortion: r² distortion coefficient
         :param lcolor: :class:`LateralColor`
 
         .. Note:: We restrict here the model to a quadratic radial geometric
@@ -474,17 +478,20 @@ class CameraCollimator(object):
            <https://en.wikipedia.org/wiki/Distortion_%28optics%29>`_
         """
 
-        assert isinstance(lcolor, LateralColor), \
+        assert lcolor is None or isinstance(lcolor, LateralColor), \
             "lcolor should be a LateralColor"
 
         self.flength = flength        #: Focal length [m]
-        self.distortion = distortion  #: Distortion coefficient
+        self.distortion = distortion  #: r² distortion coefficient
         self.lcolor = lcolor          #: Lateral color
 
     def __str__(self):
 
-        return "f={:.1f} mm, e={:+.3f}\n   {}".format(
-            self.flength*1e3, self.distortion, self.lcolor)
+        s = "f={:.1f} m, e={:+.3f}".format(self.flength, self.distortion)
+        if self.lcolor is not None:
+            s += '\n   {}'.format(self.lcolor)
+
+        return s
 
     @staticmethod
     def rect2pol(position):
@@ -549,7 +556,7 @@ class CameraCollimator(object):
 class Collimator(CameraCollimator):
 
     """
-    Converts a 2D-position (in the focal plane) into a 2D-direction.
+    Convert a 2D-position (in the focal plane) into a 2D-direction.
 
     .. autosummary::
 
@@ -630,7 +637,7 @@ class Collimator(CameraCollimator):
 class Camera(CameraCollimator):
 
     """
-    Converts a 2D-direction into a 2D-position (in the detector plane).
+    Convert a 2D-direction into a 2D-position (in the detector plane).
 
     .. Note:: the detector coordinate axes are flipped, so that
        sources remain in the same quadrant in the focal *and* detector
@@ -704,6 +711,35 @@ class Camera(CameraCollimator):
                                        1 + self.lcolor.amplitude(wavelength))
 
         return self.pol2rect(tantheta, phi + N.pi)  # Flipped direction
+
+
+class Telescope(Camera):
+
+    """
+    Convert a 2D-direction in the sky into a 2D-position in the focal plane.
+    """
+
+    def __init__(self, config):
+        """
+        Initialization from optical configuration dictionary.
+
+        :param dict config: optical configuration
+        """
+
+        try:
+            flength = config['TEL_F']
+            distortion = config['TEL_E']
+        except KeyError as err:
+            raise KeyError(
+                "Invalid configuration file: missing key {!r}".format(
+                    err.args[0]))
+
+        # Initialize from Camera parent class
+        super(Camera, self).__init__(flength, distortion, lcolor=None)
+
+    def __str__(self):
+
+        return "Telescope:  {}".format(super(Camera, self).__str__())
 
 
 class Prism(object):

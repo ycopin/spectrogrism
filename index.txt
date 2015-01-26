@@ -17,9 +17,9 @@ Grism-based Spectrograph Modeling
     *SuperNova Integral Field Spectrograph* [Lantz04]_ data-reduction pipeline,
     and presented in [Copin00]_.  It provides a flexible chromatic mapping
     between the input focal plane and the output detector plane, based on an
-    semi-empirical simplified ray-tracing model of the key optical
+    effective simplified ray-tracing model of the key optical
     elements defining the spectrograph (collimator, prism, grating, camera),
-    described by a restricted number of physically-motivated distortion 
+    described by a restricted number of physically-motivated distortion
     parameters.
 
 Optical modeling
@@ -57,6 +57,10 @@ aberrations).  :class:`spectrogrism.Prism` includes 3D-tilts.
    wavelengths, using the SNIFS-R optical configuration.  Orders -1 (very top),
    0 (undispersed), 1 (middle) and 2 (bottom) are represented.  The size of the
    symbol somehow encodes the blaze function of the spectrograph.
+
+For completness, a :class:`spectrogrism.Telescope` helper class, which
+converts a direction in the sky into a position in the focal plane, is
+provided.
 
 Positions and directions
 ------------------------
