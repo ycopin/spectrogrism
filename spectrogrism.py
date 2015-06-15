@@ -1657,7 +1657,7 @@ class Spectrograph(object):
         # Detector positions
         detector = DetectorPositions(
             wavelengths, spectrograph=self,
-            name='/'.join((self.config.name, simcfg.name)))
+            name=self.config.name)
 
         # Simulate forward propagation for all focal-plane positions
         for xy in coords:

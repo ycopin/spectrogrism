@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
-zemax
------
+Near Infrared Spectrometer and Photometer (NISP)
+------------------------------------------------
 
 .. autosummary::
 
@@ -34,15 +34,15 @@ try:
 except ImportError:
     pass
 
-#: EUCLID optical configuration, R-grism of NISP spectrograph
+#: NISP optical configuration, R-grism
 #:
 #: The detector plane is tiled with 4×4 detectors of 2k×2k pixels of 18 µm;
 #: the spectrograph has a mean magnification (`NISPPlateScale`) of
 #: 0.5 approximately.  Hence a focal plane of approximately 29×29 cm².
 #:
 #: Sources: *NISP Technical Description* `EUCL-LAM-OTH-7-001`
-EUCLID_R = dict(
-    name="EUCLID-R",
+NISP_R = dict(
+    name="NISP-R",
     wave_ref=1.5e-6,                  # Reference wavelength [m]
     wave_range=[1.25e-6, 1.85e-6],    # Wavelength range [m]
     # Grism
@@ -61,7 +61,7 @@ EUCLID_R = dict(
 )
 
 # Guessed values (not from official documents)
-EUCLID_R.update(
+NISP_R.update(
     # Collimator
     collimator_flength=2000e-3,       # Focal length [m]
     # Camera
@@ -70,15 +70,15 @@ EUCLID_R.update(
     detector_dxdy=0.689e-3 - 4.194e-3j,  # Detector offset [m]
 )
 
-# # EUCLID simulation configuration (now directly read from simulation)
-ZMX_SIMU = dict(
-    name="Zemax run_190315",
-    wave_npx=13,                    # Nb of pixels per spectrum
-    wave_range=[1.20e-6, 1.80e-6],  # Wavelength range [m]
-    orders=[1],                     # Dispersion orders
-    # Sky sampling
-    input_directions=N.linspace(-0.4, +0.4, 17)/RAD2DEG,  # [rad]
-)
+# # NISP simulation configuration (now directly read from simulation)
+# ZMX_SIMU = dict(
+#     name="Zemax run_190315",
+#     wave_npx=13,                    # Nb of pixels per spectrum
+#     wave_range=[1.20e-6, 1.80e-6],  # Wavelength range [m]
+#     orders=[1],                     # Dispersion orders
+#     # Sky sampling
+#     input_directions=N.linspace(-0.4, +0.4, 17)/RAD2DEG,  # [rad]
+# )
 
 
 class Zemax(object):
@@ -205,42 +205,6 @@ Input: {} × {} entries\
 
         return ax
 
-    def simulate(self,
-                 optcfg=OptConfig(EUCLID_R), simcfg=None,
-                 verbose=False, test=False):
-
-        # Spectrograph
-        spectro = Spectrograph(optcfg,
-                               grism_on=optcfg.get('grism_on', True),
-                               add_telescope=True)
-
-        if not simcfg:
-            simcfg = self.simcfg          # Simulation configuration
-
-        if verbose:
-            print(optcfg)
-            print(simcfg)
-            print(spectro)
-
-        if test:
-            try:
-                spectro.test(simcfg)
-            except AssertionError as err:
-                warnings.warn(str(err))
-            else:
-                print("Spectrograph test: OK")
-
-        detector = spectro.simulate(simcfg)
-
-        return detector
-
-    def adjust_simulation(self):
-
-        detector = self.simulate()
-        # Work on updated spectrograph
-
-        raise NotImplementedError()
-
 
 if __name__ == '__main__':
 
@@ -248,10 +212,31 @@ if __name__ == '__main__':
     zmx = Zemax(filename)
     print(zmx)
 
+    # Zemax simulation
     # ax = zmx.plot_input()
     ax = zmx.plot_output(marker='.', s=20, edgecolor='k')
-    simu = zmx.simulate(test=True, verbose=False)
-    simu.plot(ax=ax, zorder=0)            # Draw below Zemax
-    ax.axis([-100, +100, -100, +100])        # [mm]
-    ax.legend(fontsize='small')
+
+    # Optical modeling
+    optcfg = OptConfig(NISP_R)  # Optical configuration (default NISP)
+    simcfg = zmx.get_simcfg()   # Simulation configuration
+    
+    spectro = Spectrograph(optcfg,
+                           grism_on=optcfg.get('grism_on', True),
+                           add_telescope=True)
+
+    # Test
+    try:
+        spectro.test(simcfg, verbose=False)
+    except AssertionError as err:
+        warnings.warn(str(err))
+    else:
+        print("Spectrograph test: OK")
+
+    # Simulation
+    simu = spectro.simulate(simcfg)
+    
+    simu.plot(ax=ax, zorder=0)                      # Draw below Zemax
+    ax.axis([-100, +100, -100, +100])               # [mm]
+
+    ax.legend(fontsize='small', frameon=True, framealpha=0.5)
     P.show()

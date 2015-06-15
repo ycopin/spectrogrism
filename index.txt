@@ -87,17 +87,17 @@ References
 .. [Lantz04] `2004SPIE.5249..146L
              <http://adsabs.harvard.edu/abs/2004SPIE.5249..146L>`_
 
-Zemax simulations
-=================
+Near Infrared Spectrometer and Photometer (NISP)
+================================================
 
 Julien Zoubian provided sky-to-detector Zemax 1st-order simulations
-for a nominal optical configuration.
+for a fiducial NISP configuration.
 
 .. figure:: run_190315.*
 
    **Figure:** Zemax sky-to-detector 1st-order simulation of 17×17
    sources in the detector plane at 13 individual wavelengths (*small
-   symbols*) and unadjusted optical modeling using fiducial EUCLID
+   symbols*) and unadjusted optical modeling using fiducial NISP
    parameters (*large symbols*).
 
 Code documentation
@@ -107,7 +107,7 @@ Code documentation
    :maxdepth: 2
 
    spectrogrism
-   zemax
+   nisp
 
 Indices and tables
 ==================
