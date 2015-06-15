@@ -92,7 +92,7 @@ copyright = u'2015, Yannick Copin'
 # built documents.
 #
 # The short X.Y version.
-version = '0.1'
+version = '0.2'
 # The full version, including alpha/beta/rc tags.
 release = version
 
@@ -225,14 +225,14 @@ htmlhelp_basename = 'spectrogrismdoc'
 
 # noinspection PyPep8,PyPep8,PyPep8,PyPep8,PyPep8,PyPep8,PyPep8,PyPep8,PyPep8
 latex_elements = {
-# The paper size ('letterpaper' or 'a4paper').
+    # The paper size ('letterpaper' or 'a4paper').
     'papersize': 'a4paper',
 
-# The font size ('10pt', '11pt' or '12pt').
-#'pointsize': '10pt',
+    # The font size ('10pt', '11pt' or '12pt').
+    'pointsize': '10pt',
 
-# Additional stuff for the LaTeX preamble.
-#'preamble': '',
+    # Additional stuff for the LaTeX preamble.
+    #'preamble': '',
 }
 
 # Grouping the document tree into LaTeX files. List of tuples

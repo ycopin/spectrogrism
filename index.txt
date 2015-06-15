@@ -3,9 +3,9 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-=================================
-Grism-based Spectrograph Modeling
-=================================
+=====================================================================
+                  Grism-based Spectrograph Modeling
+=====================================================================
 
 :Version: |version| of |today|
 :Author: Yannick Copin <y.copin@ipnl.in2p3.fr>
@@ -90,8 +90,10 @@ References
 Near Infrared Spectrometer and Photometer (NISP)
 ================================================
 
-Julien Zoubian provided sky-to-detector Zemax 1st-order simulations
-for a fiducial NISP configuration.
+The previous optical model is used to simulate the Near Infrared
+Spectrometer and Photometer (NISP) of EUCLID.  Julien Zoubian provided
+sky-to-detector Zemax 1st-order simulations for a fiducial NISP
+configuration.
 
 .. figure:: run_190315.*
 
