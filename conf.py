@@ -46,7 +46,7 @@ autodoc_member_order = "bysource"       # Keep source order
 # Using mocks for libraries that depend on C modules
 # http://docs.readthedocs.org/en/latest/faq.html#i-get-import-errors-on-libraries-that-depend-on-c-modules
 
-MOCK_MODULES = ['numpy', 'matplotlib', 'matplotlib.pyplot', 'seaborn']
+MOCK_MODULES = ['numpy', 'matplotlib', 'matplotlib.pyplot', 'seaborn', 'yaml']
 
 # autodoc_mock_imports is available from sphinx-1.3 only, rtfm.org uses 1.2
 # autodoc_mock_imports = MOCK_MODULES
