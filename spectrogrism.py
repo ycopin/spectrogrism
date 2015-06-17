@@ -35,17 +35,23 @@ __docformat__ = 'restructuredtext en'
 import warnings
 
 import numpy as N
+import pandas as PD
 import matplotlib.pyplot as P
 try:
     import seaborn
     seaborn.set_style("whitegrid",
                       # {'xtick.major.size': 6, 'xtick.minor.size': 3,
-                      #  'ytick.major.size': 6, 'ytick.minor.size': 3}
+                      #  'ytick.major.size': 6, 'ytick.minor.size': 3},
     )
 except ImportError:
     pass
 
+# Options
 N.set_printoptions(linewidth=100, threshold=10)
+PD.set_option("display.float.format",
+              # PD.core.format.EngFormatter(accuracy=2, use_eng_prefix=True)
+              lambda x: '{:g}'.format(x)
+)
 
 # Constants ===============================================
 
@@ -254,7 +260,7 @@ class Spectrum(object):
         return "{}{:d} px within {:.2f}-{:.2f} µm".format(
             self.name + ': ' if self.name else '',
             len(self.wavelengths),
-            self.wavelengths[0]*1e6, self.wavelengths[-1]*1e6)
+            self.wavelengths[0] / 1e-6, self.wavelengths[-1] / 1e-6)
 
     @classmethod
     def default(cls, waves=1e-6, name='spectrum'):
@@ -324,7 +330,7 @@ class Position2D(Coordinates2D):
 
     def __str__(self):
 
-        z = self * 1e3                    # From m to mm
+        z = self / 1e-3                    # [mm]
         return "{:+.1f} × {:+.1f} mm".format(z.real, z.imag)
 
 
@@ -363,17 +369,22 @@ class DetectorPositions(object):
     """
     A container for positions on the detector.
 
-    A dictionary-based container for (complex) positions in the detector plane,
-    labeled by (complex) source position in the focal plane and dispersion
-    orders: `{ coords (complex): { order: [ positions (complexes) ] } }`.
+    A Pandas-based container for (complex) positions in the detector plane,
+    namely an order-keyed dictionary of :class:`pandas.DataFrame` including
+    complex detector positions, with wavelengths as `index` and coords as
+    `columns`.
+
+    .. Warning:: :class:`pandas.Panel` does not seem to support deffered
+       construction, hence the usage of a order-keyed dict.
+
+    .. Warning:: indexing by float is not really a good idea. Float indices
+       (wavelengths and coordinates) are therefore rounded first with a
+       sufficient precision (e.g. nm for wavelengths).
 
     .. autosummary::
 
        add_spectrum
        plot
-
-    .. TODO:: switch from a dictionary-based container to a labeled array
-              container (Panda?)
     """
 
     markers = {0: '.', 1: 'o', 2: 's'}
@@ -388,17 +399,14 @@ class DetectorPositions(object):
                 "spectrograph should be a Spectrograph"
         self.spectrograph = spectrograph        #: Associated spectrograph
 
-        self.lbda = N.array(wavelengths)        #: Wavelengths [m]
-
-        #: { coords (complex): { order: [ positions (complexes) ] } }
-        self.spectra = {}
-
+        self.lbda = N.around(wavelengths, 12)   #: Rounded wavelengths [m]
+        self.spectra = {}                       #: {order: dataframe}
         self.name = name                        #: Name
 
-    @property
-    def coords(self):
+    def get_coords(self, order=1):
 
-        return N.sort_complex(self.spectra.keys())
+        return N.sort_complex(
+            self.spectra[order].columns.values.astype(N.complex))
 
     def add_spectrum(self, coords, detector_positions, order=1):
         """
@@ -414,7 +422,11 @@ class DetectorPositions(object):
         assert len(detector_positions) == len(self.lbda), \
             "incompatible detector_positions array"
 
-        self.spectra.setdefault(coords, {})[order] = detector_positions
+        rcoords = N.around(coords, 12)          # Rounded coordinates
+        df = self.spectra.setdefault(order,
+                                     PD.DataFrame(index=self.lbda,
+                                                  columns=(rcoords,)))
+        df[rcoords] = detector_positions
 
     def plot(self, ax=None, coords=None, orders=None, blaze=False, **kwargs):
         """
@@ -443,79 +455,64 @@ class DetectorPositions(object):
         cmap = P.matplotlib.colors.LinearSegmentedColormap(
             'dummy', P.get_cmap('Spectral_r')._segmentdata, len(self.lbda))
 
-        # Blaze function cache (they depend on wavelength and orders only)
-        bz_functions = {}
+        # Default blaze transmission
+        bztrans = N.ones_like(self.lbda)
 
-        if coords is None:                     # Plot all spectra
-            coords = self.coords
+        if orders is None:                        # Plot all orders
+            orders = sorted(self.spectra)
 
-        for xy in coords:                      # Loop over sources
+        for order in orders:
             try:
-                source = self.spectra[xy]
+                df = self.spectra[order]
             except KeyError:
-                warnings.warn(
-                    "Source {} is unknown, skipped".format(str_position(xy)))
+                warnings.warn("Order #{} not in '{}', skipped".format(
+                    order, self.name))
                 continue
-            if orders is None:                 # Plot all orders
-                orders = source.keys()
-            for order in orders:
+
+            kwcopy = kwargs.copy()
+            marker = kwcopy.pop('marker',
+                                self.markers.get(abs(order), 'o'))
+
+            if blaze and self.spectrograph:
+                bztrans = self.spectrograph.grism.blaze_function(
+                    self.lbda, order)
+                s = kwcopy.pop('s', N.maximum(20 * N.sqrt(bztrans), 5))
+            else:
+                s = kwcopy.pop('s', 20)
+
+            if coords is None:                    # Plot all spectra
+                coords = self.get_coords(order=order)
+
+            for xy in coords:                     # Loop over sources
                 try:
-                    positions = source[order] * 1e3   # from m to mm
-                except KeyError:  # This dispersion order has not been computed
-                    warnings.warn(
-                        "Source {} is not available for order {}".format(
-                            xy, order))
+                    positions = df[xy].values / 1e-3  # Complex positions [mm]
+                except KeyError:
+                    warnings.warn("Source {} is unknown, skipped".format(
+                        str_position(xy)))
                     continue
 
-                if blaze and self.spectrograph:
-                    bz_fn = bz_functions.setdefault(
-                        order, self.spectrograph.grism.blaze_function(
-                            self.lbda, order))
-                else:
-                    bz_fn = N.ones_like(self.lbda)
-
-                kwcopy = kwargs.copy()
-                s = kwcopy.pop('s', N.maximum(20 * N.sqrt(bz_fn), 5))
-                marker = kwcopy.pop(
-                    'marker', self.markers.get(abs(order), 'o'))
                 sc = ax.scatter(positions.real, positions.imag,
-                                c=self.lbda * 1e6,      # from m to µm
-                                cmap=cmap, s=s, marker=marker,
-                                **kwcopy)
+                                c=self.lbda / 1e-6,   # Wavelength [µm]
+                                cmap=cmap, s=s, marker=marker, **kwcopy)
 
-                kwargs.pop('label', None)       # Label only once
+                kwcopy.pop('label', None)  # Label only for one source
+
+            kwargs.pop('label', None)      # Label only for one order
 
         if fig:
             fig.colorbar(sc, label=u"Wavelength [µm]")
 
         return ax
 
-    def check_compatibility(self, other):
+    def assert_compatibility(self, other, order=1):
 
         assert isinstance(other, DetectorPositions)
         assert N.allclose(self.lbda, other.lbda), \
             "{!r} and {!r} have incompatible wavelengths".format(
                 self.name, other.name)
-        assert N.allclose(self.coords, other.coords), \
+        assert N.allclose(self.get_coords(order), other.get_coords(order)), \
             "{!r} and {!r} have incompatible input coordinates".format(
                 self.name, other.name)
-
-    def to_panel(self):
-        """
-        Convert container to Pandas Panel, with orders as `items`, wavelengths
-        as  `major_axis` and coords as `minor_axis`.
-        """
-
-        import pandas as PD
-
-        panel = PD.Panel(self.spectra, major_axis=self.lbda)  #
-        if not len(panel.items) == 1:
-            raise NotImplementedError(
-                "Panels only support mono-order simulations.")
-        # Transpose orders and coordinates
-        panel = panel.transpose('minor_axis', 'major_axis', 'items')
-
-        return panel
 
 
 class LateralColor(object):
@@ -550,7 +547,7 @@ class LateralColor(object):
     def __str__(self):
 
         return "Lateral color: lref={:.2f} µm, coeffs={}".format(
-            self.wref*1e6,
+            self.wref / 1e-6,
             ', '.join( '{:+g}'.format(coeff) for coeff in self.coeffs))
 
     def amplitude(self, wavelengths):
@@ -626,7 +623,7 @@ class Material(object):
 
     def __str__(self):
 
-        return "Material: {}, n(1 µm)={:.3f}".format(
+        return u"Material: {}, n(1 µm)={:.3f}".format(
             self.name, self.index(1e-6))
 
     def index(self, wavelengths):
@@ -1103,7 +1100,7 @@ class Grating(object):
 
         x, y, z = xyz
         xp = x * n
-        yp = y * n + order * wavelengths * self.rho * 1e3
+        yp = y * n + order * wavelengths * self.rho / 1e-3
         zp = N.sqrt(1 - (xp**2 + yp**2))
 
         return N.vstack((xp, yp, zp)).squeeze()
@@ -1125,7 +1122,7 @@ class Grating(object):
 
         xp, yp, zp = xyz
         x = xp / n
-        y = (yp - order * wavelength * self.rho * 1e3) / n
+        y = (yp - order * wavelength * self.rho / 1e-3) / n
         z = N.sqrt(1 - (x**2 + y**2))
 
         return N.vstack((x, y, z)).squeeze()
@@ -1187,7 +1184,7 @@ class Grism(object):
   {0.prism}
   {0.grating}
   1st-order null-deviation wavelength: {1:.2f} µm""".format(
-            self, self.null_deviation(order=1) * 1e6)
+            self, self.null_deviation(order=1) / 1e-6)
 
     def blaze_function(self, wavelengths, order=1):
         r"""
@@ -1218,7 +1215,7 @@ class Grism(object):
         np = self.prism.material.index(wavelengths)    # Prism index
         ng = self.grating.material.index(wavelengths)  # Grating index
 
-        rholbda = self.grating.rho * 1e3 * wavelengths  # g/m * m = unitless
+        rholbda = self.grating.rho / 1e-3 * wavelengths  # g/m * m = unitless
         npsinA = np * N.sin(self.prism.angle)
 
         i = N.arcsin(npsinA / ng) - self.grating.blaze               # [rad]
@@ -1373,7 +1370,7 @@ class Grism(object):
 
         import scipy.optimize as SO
 
-        k = N.sin(self.prism.angle)/(order * self.grating.rho * 1e3)
+        k = N.sin(self.prism.angle)/(order * self.grating.rho / 1e-3)
         f = lambda l: l - k * (self.prism.material.index(l) - 1)
 
         lbda0 = SO.newton(f, 1e-6)  # Look around 1 µm
@@ -1440,9 +1437,9 @@ class Spectrograph(object):
         s.append(self.camera.__str__())
         s.append("Spectrograph magnification: {0.gamma:.3f}".format(self))
         wref = self.config.wref
-        pxsize = self.config['detector_pxsize']
         s.append("Central dispersion: {:.2f} AA/px at {:.2f} µm".format(
-            self.dispersion(wref)*1e10*pxsize, wref*1e6))
+            self.dispersion(wref) / 1e-10 * self.config['detector_pxsize'],
+            wref / 1e-6))
 
         return '\n'.join(s)
 
@@ -1468,7 +1465,7 @@ class Spectrograph(object):
 
         def yoverf(l):
 
-            sinbeta = (order * self.grism.grating.rho * 1e3 * l -
+            sinbeta = (order * self.grism.grating.rho / 1e-3 * l -
                        self.grism.prism.material.index(l) *
                        N.sin(self.grism.prism.angle))
 
@@ -1561,7 +1558,7 @@ class Spectrograph(object):
         if verbose:
             print(" SPECTROGRAPH TEST ".center(60, '='))
             print("Input source:", source)
-            print("Wavelengths [µm]:", wavelengths*1e6)
+            print("Wavelengths [µm]:", wavelengths / 1e-6)
 
         # Forward step-by-step
         if self.telescope:
@@ -1585,14 +1582,14 @@ class Spectrograph(object):
         # Camera
         dpositions = self.camera.forward(fdirections, wavelengths)
         if verbose:
-            print("Positions (detector) [mm]:", dpositions*1e3)
+            print("Positions (detector) [mm]:", dpositions / 1e-3)
 
         # Loop over positions in detector plane
         for lbda, dpos in zip(wavelengths, dpositions):
             # Backward step-by-step
             if verbose:
-                print("Test position (detector) [mm]:", dpos*1e3,
-                      "Wavelength [µm]:", lbda*1e6)
+                print("Test position (detector) [mm]:", dpos / 1e-3,
+                      "Wavelength [µm]:", lbda / 1e-6)
             # Camera
             bdirection = self.camera.backward(dpos, lbda)
             if verbose:
@@ -1611,8 +1608,7 @@ class Spectrograph(object):
                 tdirection = self.telescope.backward(fposition, lbda)
                 if verbose:
                     print("Position (coll, backward) [×1e6]:", fposition*1e6)
-                    print("Direction (tel, backward) [×1e6]:",
-                          tdirection*1e6)
+                    print("Direction (tel, backward) [×1e6]:", tdirection*1e6)
                     print("Input direction (reminder) [×1e6]:",
                           source.coords*1e6)
 
@@ -1621,9 +1617,9 @@ class Spectrograph(object):
             else:
                 if verbose:
                     print("Focal-plane position (backward) [mm]:",
-                          fposition*1e3)
+                          fposition / 1e-3)
                     print("Input position (reminder) [mm]:",
-                          source.coords*1e3)
+                          source.coords / 1e-3)
 
                 assert N.isclose(source.coords, fposition), \
                     "Backward modeling does not match"
@@ -1682,7 +1678,7 @@ def str_position(position):
     .. Warning:: work on a single (complex) position.
     """
 
-    z = position * 1e3
+    z = position / 1e-3         # [mm]
     return "{:+.1f} × {:+.1f} mm".format(z.real, z.imag)
 
 
@@ -1697,7 +1693,7 @@ def str_direction(direction):
     # return "{:+.2f} x {:+.2f} arcmin".format(
     #     N.arctan(tantheta)*RAD2MIN, phi*RAD2MIN)
 
-    z = direction * RAD2MIN
+    z = direction * RAD2MIN     # [arcmin]
     return "{:+.1f} × {:+.1f} arcmin".format(z.real, z.imag)
 
 # Simulations ==============================
@@ -1729,7 +1725,7 @@ def plot_SNIFS_R(optcfg=OptConfig(SNIFS_R),
     ax = detector.plot(orders=(-1, 0, 1, 2), blaze=True)
     ax.set_aspect('auto')
     ax.axis(N.array([-2000, 2000, -4000, 4000]) *
-            optcfg['detector_pxsize']*1e3)  # [mm]
+            optcfg['detector_pxsize'] / 1e-3)  # [mm]
 
     return ax
 

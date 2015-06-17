@@ -46,7 +46,8 @@ autodoc_member_order = "bysource"       # Keep source order
 # Using mocks for libraries that depend on C modules
 # http://docs.readthedocs.org/en/latest/faq.html#i-get-import-errors-on-libraries-that-depend-on-c-modules
 
-MOCK_MODULES = ['numpy', 'matplotlib', 'matplotlib.pyplot', 'seaborn', 'yaml']
+MOCK_MODULES = ['numpy', 'matplotlib', 'matplotlib.pyplot',
+                'seaborn', 'yaml', 'pandas']
 
 # autodoc_mock_imports is available from sphinx-1.3 only, rtfm.org uses 1.2
 # autodoc_mock_imports = MOCK_MODULES
@@ -69,6 +70,7 @@ intersphinx_mapping = {
     'numpy': ('http://docs.scipy.org/doc/numpy/', None),
     'scipy': ('http://docs.scipy.org/doc/scipy/reference/', None),
     'matplotlib': ('http://matplotlib.org/', None),
+    'pandas': ('http://pandas.pydata.org/pandas-docs/dev', None),
     }
 
 # Add any paths that contain templates here, relative to this directory.
@@ -270,10 +272,8 @@ latex_domain_indices = False
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 # noinspection PyPep8
-man_pages = [
-    ('index', 'spectrogrism', u'SpectroGrism Documentation',
-     [u'Yannick Copin'], 1)
-]
+man_pages = [('index', 'spectrogrism', u'SpectroGrism Documentation',
+              [u'Yannick Copin'], 1)]
 
 # If true, show URL addresses after external links.
 #man_show_urls = False
@@ -285,10 +285,9 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 # noinspection PyPep8,PyPep8
-texinfo_documents = [
-  ('index', 'spectrogrism', u'SpectroGrism Documentation',
-   u'Yannick Copin', 'spectrogrism', 'Grism-based spectrograph modeling',
-   'Miscellaneous'),
+texinfo_documents = [('index', 'spectrogrism', u'SpectroGrism Documentation',
+                      u'Yannick Copin', 'spectrogrism',
+                      'Grism-based spectrograph modeling', 'Miscellaneous'),
 ]
 
 # Documents to append as an appendix to all manuals.

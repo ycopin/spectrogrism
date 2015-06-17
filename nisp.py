@@ -23,7 +23,7 @@ import warnings
 import numpy as N
 import matplotlib.pyplot as P
 
-from spectrogrism import *
+import spectrogrism as S
 
 try:
     import seaborn
@@ -36,11 +36,11 @@ except ImportError:
 
 #: NISP optical configuration, R-grism
 #:
-#: The detector plane is tiled with 4×4 detectors of 2k×2k pixels of 18 µm;
-#: the spectrograph has a mean magnification (`NISPPlateScale`) of
-#: 0.5 approximately.  Hence a focal plane of approximately 29×29 cm².
+#: .. Note:: The detector plane is tiled with 4×4 detectors of 2k×2k pixels of
+#:    18 µm; the spectrograph has a mean magnification (`NISPPlateScale`) of
+#:    0.5 approximately.  Hence a focal plane of approximately 29×29 cm².
 #:
-#: Sources: *NISP Technical Description* `EUCL-LAM-OTH-7-001`
+#: Sources: *NISP Technical Description* (EUCL-LAM-OTH-7-001)
 NISP_R = dict(
     name="NISP-R",
     wave_ref=1.5e-6,                  # Reference wavelength [m]
@@ -50,10 +50,10 @@ NISP_R = dict(
     grism_dispersion=9.8,             # Informative spectral dispersion [AA/px]
     grism_prism_material='FS',        # Prism glass
     grism_grating_material='FS',      # Grating resine
-    grism_prism_angle=2.88/RAD2DEG,   # Prism angle [rad]
+    grism_prism_angle=2.88/S.RAD2DEG,   # Prism angle [rad]
     # grism_grating_rho=19.29,         # Grating groove density [lines/mm]
     grism_grating_rho=13.72,          # Grating groove density [lines/mm]
-    grism_grating_blaze=2.6/RAD2DEG,  # Blaze angle [rad]
+    grism_grating_blaze=2.6/S.RAD2DEG,  # Blaze angle [rad]
     # Detector
     detector_pxsize=18e-6,            # Detector pixel size [m]
     # Telescope
@@ -77,7 +77,7 @@ NISP_R.update(
 #     wave_range=[1.20e-6, 1.80e-6],  # Wavelength range [m]
 #     orders=[1],                     # Dispersion orders
 #     # Sky sampling
-#     input_coords=N.linspace(-0.4, +0.4, 17)/RAD2DEG,  # [rad]
+#     input_coords=N.linspace(-0.4, +0.4, 17)/S.RAD2DEG,  # [rad]
 # )
 
 
@@ -146,7 +146,7 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         # Unique input coordinates
         coords = N.unique(self.data['xindeg'] + 1j * self.data['yindeg'])
         # Convert back to [[x, y]]
-        coords = N.vstack((coords.real, coords.imag)).T / RAD2DEG   # [rad]
+        coords = N.vstack((coords.real, coords.imag)).T / S.RAD2DEG   # [rad]
 
         simcfg = dict(
             name=self.filename,
@@ -156,7 +156,7 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
             input_coords=coords,
             )
 
-        return SimConfig(simcfg)
+        return S.SimConfig(simcfg)
 
     def detector_positions(self):
         """Convert simulation to :class:`DetectorPositions`."""
@@ -167,8 +167,8 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         # print("{}: {} spectra of {} px".format(
         #     self.filename, len(coords), len(waves)))
 
-        detector = DetectorPositions(waves * 1e-6,   # Wavelengths in [m]
-                                     name=self.filename)
+        detector = S.DetectorPositions(waves * 1e-6,   # Wavelengths in [m]
+                                       name=self.filename)
         for xy in coords:                  # Loop over input positions [deg]
             select = (N.isclose(self.data['xindeg'], xy.real) &
                       N.isclose(self.data['yindeg'], xy.imag))
@@ -177,7 +177,7 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
             # Sanity check
             assert N.allclose(subdata['wave'], waves)
             dpos = subdata['xpsfmm'] + 1j * subdata['ypsfmm']   # [mm]
-            detector.add_spectrum(xy/RAD2DEG, dpos * 1e-3, order=1)
+            detector.add_spectrum(xy/S.RAD2DEG, dpos * 1e-3, order=1)
 
         return detector
 
@@ -190,7 +190,7 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
                                  xlabel="x [deg]", ylabel="y [deg]",
                                  title="{} - Input".format(self.filename))
 
-        coords = self.simcfg.get_coords() * RAD2DEG  # [deg]
+        coords = self.simcfg.get_coords() * S.RAD2DEG  # [deg]
         ax.scatter(coords.real, coords.imag, **kwargs)
 
         # ax.set_aspect('equal', adjustable='datalim')
@@ -217,25 +217,35 @@ if __name__ == '__main__':
     ax = zmx.plot_output(marker='.', s=20, edgecolor='k')
 
     # Optical modeling
-    optcfg = OptConfig(NISP_R)  # Optical configuration (default NISP)
-    simcfg = zmx.get_simcfg()   # Simulation configuration
+    optcfg = S.OptConfig(NISP_R)  # Optical configuration (default NISP)
+    simcfg = zmx.get_simcfg()     # Simulation configuration
 
-    spectro = Spectrograph(optcfg,
-                           grism_on=optcfg.get('grism_on', True),
-                           add_telescope=True)
+    spectro = S.Spectrograph(optcfg,
+                             grism_on=optcfg.get('grism_on', True),
+                             add_telescope=True)
 
     # Test
     try:
         spectro.test(simcfg, verbose=False)
     except AssertionError as err:
-        warnings.warn(str(err))
+        warnings.warn("Spectrograph test:", str(err))
     else:
         print("Spectrograph test: OK")
 
     # Simulation
     simu = spectro.simulate(simcfg)
 
-    simu.plot(ax=ax, zorder=0)                      # Draw below Zemax
+    # Compute RMS on 1st-order positions
+    zmx.detector.assert_compatibility(simu)
+    # Dataframe of position offsets for 1st-order
+    dpos = simu.spectra[1] - zmx.detector.spectra[1]
+    rms = N.sqrt((dpos.abs()**2).values.mean())
+    print("RMS = {:.4f} mm = {:.2f} px".format(
+        rms / 1e-3, rms / optcfg['detector_pxsize']))
+
+    simu.plot(ax=ax, zorder=0,                      # Draw below Zemax
+              label="{} (RMS={:.1f} px)".format(
+                  simu.name, rms / optcfg['detector_pxsize']))
     ax.axis([-100, +100, -100, +100])               # [mm]
 
     ax.legend(fontsize='small', frameon=True, framealpha=0.5)
