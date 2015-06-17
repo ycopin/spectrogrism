@@ -90,9 +90,9 @@ References
 Near Infrared Spectrometer and Photometer (NISP)
 ================================================
 
-The previous optical model is used to simulate the Near Infrared
+The `spectrogrism` optical model is used to simulate the Near Infrared
 Spectrometer and Photometer (NISP) of EUCLID.  Julien Zoubian provided
-sky-to-detector Zemax 1st-order simulations for a fiducial NISP
+full sky-to-detector Zemax 1st-order simulations for a fiducial NISP
 configuration.
 
 .. figure:: run_190315.*

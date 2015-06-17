@@ -2,18 +2,18 @@
 # -*- coding: utf-8 -*-
 
 """
-Near Infrared Spectrometer and Photometer (NISP)
-------------------------------------------------
+nisp
+----
 
 .. autosummary::
 
    Zemax
-   
-Questions to JZ:
 
-* input y-coordinates are offset by +0.85 deg
-* input y-coordinates are not centered: (dx, dy) = (0.689, -4.194)
-* input position (+0.4, +1.25) is missing the 1.85 µm wavelength
+.. Warning:: Questions to JZ:
+
+   * input y-coordinates are offset by +0.85 deg
+   * input y-coordinates are not centered: (dx, dy) = (0.689, -4.194)
+   * input position (+0.4, +1.25) is missing the 1.85 µm wavelength
 """
 
 from __future__ import division, print_function
@@ -51,7 +51,7 @@ NISP_R = dict(
     grism_prism_material='FS',        # Prism glass
     grism_grating_material='FS',      # Grating resine
     grism_prism_angle=2.88/RAD2DEG,   # Prism angle [rad]
-    #grism_grating_rho=19.29,         # Grating groove density [lines/mm]
+    # grism_grating_rho=19.29,         # Grating groove density [lines/mm]
     grism_grating_rho=13.72,          # Grating groove density [lines/mm]
     grism_grating_blaze=2.6/RAD2DEG,  # Blaze angle [rad]
     # Detector
@@ -77,7 +77,7 @@ NISP_R.update(
 #     wave_range=[1.20e-6, 1.80e-6],  # Wavelength range [m]
 #     orders=[1],                     # Dispersion orders
 #     # Sky sampling
-#     input_directions=N.linspace(-0.4, +0.4, 17)/RAD2DEG,  # [rad]
+#     input_coords=N.linspace(-0.4, +0.4, 17)/RAD2DEG,  # [rad]
 # )
 
 
@@ -111,8 +111,8 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
         s = """\
 {}: {} entries
-Wavelength: {} steps from {:.2f} to {:.2f} µm
-Input: {} × {} entries\
+  Wavelength: {} steps from {:.2f} to {:.2f} µm
+  Coords: {} × {} sources\
 """.format(self.filename, len(self.data),
            len(waves), min(waves), max(waves),
            len(xin), len(yin))
@@ -139,7 +139,7 @@ Input: {} × {} entries\
         return data
 
     def get_simcfg(self, orders=[1]):
-        """Generate a simulation configuration."""
+        """Generate a :class:`SimConfig` corresponding to simulation."""
 
         # Unique wavelengths [m]
         waves = N.unique(self.data['wave']) * 1e-6   # [m]
@@ -147,13 +147,13 @@ Input: {} × {} entries\
         coords = N.unique(self.data['xindeg'] + 1j * self.data['yindeg'])
         # Convert back to [[x, y]]
         coords = N.vstack((coords.real, coords.imag)).T / RAD2DEG   # [rad]
-        
+
         simcfg = dict(
             name=self.filename,
             wave_npx=len(waves),
             wave_range=[min(waves), max(waves)],
             orders=orders,
-            input_directions=coords,
+            input_coords=coords,
             )
 
         return SimConfig(simcfg)
@@ -189,11 +189,11 @@ Input: {} × {} entries\
             ax = fig.add_subplot(1, 1, 1,
                                  xlabel="x [deg]", ylabel="y [deg]",
                                  title="{} - Input".format(self.filename))
-        
-        coords = self.simcfg.get_coords(level='sky') * RAD2DEG   # [deg]
+
+        coords = self.simcfg.get_coords() * RAD2DEG  # [deg]
         ax.scatter(coords.real, coords.imag, **kwargs)
 
-        #ax.set_aspect('equal', adjustable='datalim')
+        # ax.set_aspect('equal', adjustable='datalim')
 
         return ax
 
@@ -219,7 +219,7 @@ if __name__ == '__main__':
     # Optical modeling
     optcfg = OptConfig(NISP_R)  # Optical configuration (default NISP)
     simcfg = zmx.get_simcfg()   # Simulation configuration
-    
+
     spectro = Spectrograph(optcfg,
                            grism_on=optcfg.get('grism_on', True),
                            add_telescope=True)
@@ -234,7 +234,7 @@ if __name__ == '__main__':
 
     # Simulation
     simu = spectro.simulate(simcfg)
-    
+
     simu.plot(ax=ax, zorder=0)                      # Draw below Zemax
     ax.axis([-100, +100, -100, +100])               # [mm]
 

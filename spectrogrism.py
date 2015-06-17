@@ -34,8 +34,6 @@ __docformat__ = 'restructuredtext en'
 
 import warnings
 
-import yaml
-
 import numpy as N
 import matplotlib.pyplot as P
 try:
@@ -43,7 +41,7 @@ try:
     seaborn.set_style("whitegrid",
                       # {'xtick.major.size': 6, 'xtick.minor.size': 3,
                       #  'ytick.major.size': 6, 'ytick.minor.size': 3}
-                  )
+    )
 except ImportError:
     pass
 
@@ -89,7 +87,7 @@ SNIFS_SIMU = dict(
     wave_npx=10,                      # Nb of pixels per spectrum
     orders=range(-1, 3),              # Dispersion orders
     # Focal plane sampling
-    input_positions=N.linspace(-1e-2, 1e-2, 5),  # [m]
+    input_coords=N.linspace(-1e-2, 1e-2, 5),  # [m]
     input_angle=-10/RAD2DEG,          # Rotation of the focal plane
 )
 
@@ -139,6 +137,8 @@ class Configuration(dict):
     def save(self, yamlname):
         """Save configuration to YAML file."""
 
+        import yaml
+
         with open(yamlname, 'w') as yamlfile:
             yaml.dump(dict(self, name=self.name), yamlfile)
 
@@ -148,11 +148,14 @@ class Configuration(dict):
     def load(cls, yamlname):
         """Load configuration from YAML file."""
 
+        import yaml
+
         with open(yamlname, 'r') as yamlfile:
             adict = yaml.load(yamlfile)
 
         self = cls(adict)
-        print("Configuration {!r} loaded from {!r}".format(self.name, yamlname))
+        print("Configuration {!r} loaded from {!r}".format(
+            self.name, yamlname))
 
         return self
 
@@ -179,6 +182,7 @@ class SimConfig(Configuration):
     .. autosummary::
 
        get_waves
+       get_coords
     """
 
     conftype = "Simulation configuration"
@@ -200,26 +204,18 @@ class SimConfig(Configuration):
 
         return waves
 
-    def get_coords(self, level='focal'):
-        """Simulated complex *focal* positions or *sky* directions."""
+    def get_coords(self):
+        """Simulated input coordinates `[ x + 1j*y ]`."""
 
-        if level == 'focal':
-            keyname = 'input_positions'
-        elif level == 'sky':
-            keyname = 'input_directions'
-        else:
-            raise KeyError("Unknown level {!r}".format(level))
-
-        input = N.atleast_1d(self.get(keyname, 0))
-        # Focal-plane positions [m]
-        if N.ndim(input) == 1:        # [x]: generate square sampling x × x
-            x, y = N.meshgrid(input, input)
+        incoords = N.atleast_1d(self.get('input_coords', 0))
+        if N.ndim(incoords) == 1:        # [x]: generate square sampling x × x
+            x, y = N.meshgrid(incoords, incoords)
             coords = (x + 1j * y).ravel()
-        elif N.ndim(input) == 2 and N.shape(input)[1] == 2:
+        elif N.ndim(incoords) == 2 and N.shape(incoords)[1] == 2:
             # [[x, y]]: arbitrary sampling
-            coords = input[:, 0] + 1j * input[:, 1]
+            coords = incoords[:, 0] + 1j * incoords[:, 1]
         else:
-            raise NotImplementedError("Unsupported input positions")
+            raise NotImplementedError("Unsupported input coordinates")
 
         return coords
 
@@ -367,15 +363,17 @@ class DetectorPositions(object):
     """
     A container for positions on the detector.
 
-    A dictionary-based container for (complex) positions in the detector
-    plane, labeled by (complex) source position in the focal plane and
-    dispersion orders: `{ coords (complex): { order: [ positions
-    (complexes) ] } }`.
+    A dictionary-based container for (complex) positions in the detector plane,
+    labeled by (complex) source position in the focal plane and dispersion
+    orders: `{ coords (complex): { order: [ positions (complexes) ] } }`.
 
     .. autosummary::
 
        add_spectrum
        plot
+
+    .. TODO:: switch from a dictionary-based container to a labeled array
+              container (Panda?)
     """
 
     markers = {0: '.', 1: 'o', 2: 's'}
@@ -388,21 +386,20 @@ class DetectorPositions(object):
         if spectrograph is not None:
             assert isinstance(spectrograph, Spectrograph), \
                 "spectrograph should be a Spectrograph"
-        self.spectro = spectrograph         #: Associated spectrograph
+        self.spectrograph = spectrograph        #: Associated spectrograph
 
-        self.lbda = N.array(wavelengths)    #: Wavelengths [m]
+        self.lbda = N.array(wavelengths)        #: Wavelengths [m]
 
         #: { coords (complex): { order: [ positions (complexes) ] } }
         self.spectra = {}
 
-        #: Name
-        self.name = name
-        
+        self.name = name                        #: Name
+
     @property
     def coords(self):
 
         return N.sort_complex(self.spectra.keys())
-        
+
     def add_spectrum(self, coords, detector_positions, order=1):
         """
         Add `detector_positions` corresponding to source at `coords`
@@ -435,9 +432,9 @@ class DetectorPositions(object):
             ax = fig.add_subplot(1, 1, 1,
                                  xlabel="x [mm]", ylabel="y [mm]",
                                  title=self.name)
-            #ax.set_aspect('equal', adjustable='datalim')
+            # ax.set_aspect('equal', adjustable='datalim')
         else:
-            fig = None  # Will serve as a flag
+            fig = None          # Will serve as a flag
 
         kwargs.setdefault('edgecolor', 'none')
         kwargs.setdefault('label', self.name)
@@ -470,21 +467,22 @@ class DetectorPositions(object):
                             xy, order))
                     continue
 
-                if blaze and self.spectro:
+                if blaze and self.spectrograph:
                     bz_fn = bz_functions.setdefault(
-                        order, self.spectro.grism.blaze_function(
+                        order, self.spectrograph.grism.blaze_function(
                             self.lbda, order))
                 else:
                     bz_fn = N.ones_like(self.lbda)
 
                 kwcopy = kwargs.copy()
                 s = kwcopy.pop('s', N.maximum(20 * N.sqrt(bz_fn), 5))
-                marker = kwcopy.pop('marker', self.markers.get(abs(order), 'o'))
+                marker = kwcopy.pop(
+                    'marker', self.markers.get(abs(order), 'o'))
                 sc = ax.scatter(positions.real, positions.imag,
                                 c=self.lbda * 1e6,      # from m to µm
                                 cmap=cmap, s=s, marker=marker,
                                 **kwcopy)
-                
+
                 kwargs.pop('label', None)       # Label only once
 
         if fig:
@@ -493,7 +491,7 @@ class DetectorPositions(object):
         return ax
 
     def check_compatibility(self, other):
-        
+
         assert isinstance(other, DetectorPositions)
         assert N.allclose(self.lbda, other.lbda), \
             "{!r} and {!r} have incompatible wavelengths".format(
@@ -502,19 +500,24 @@ class DetectorPositions(object):
             "{!r} and {!r} have incompatible input coordinates".format(
                 self.name, other.name)
 
-    def distance(self, other, kind='r', coords=None, orders=(1,)):
+    def to_panel(self):
+        """
+        Convert container to Pandas Panel, with orders as `items`, wavelengths
+        as  `major_axis` and coords as `minor_axis`.
+        """
 
-        raise NotImplementedError()
-        
-        if coords is None:                     # Plot all spectra
-            coords = self.coords
+        import pandas as PD
 
-        for xy in coords:                      # Loop over sources
-            source_self = self.spectra[xy]
-            source_other = other.spectra[xy]
-            for order in orders:
-                dpos = source_other[order] - source_self[order]
-            
+        panel = PD.Panel(self.spectra, major_axis=self.lbda)  #
+        if not len(panel.items) == 1:
+            raise NotImplementedError(
+                "Panels only support mono-order simulations.")
+        # Transpose orders and coordinates
+        panel = panel.transpose('minor_axis', 'major_axis', 'items')
+
+        return panel
+
+
 class LateralColor(object):
 
     """
@@ -1497,7 +1500,8 @@ class Spectrograph(object):
         else:
             positions = source.coords
         # Collimator
-        directions = self.collimator.forward(positions, wavelengths, self.gamma)
+        directions = self.collimator.forward(
+            positions, wavelengths, self.gamma)
         if self.grism_on:
             # Grism
             directions = self.grism.forward(
@@ -1597,7 +1601,8 @@ class Spectrograph(object):
                 # Grism
                 bdirection = self.grism.backward(bdirection, lbda, order=order)
                 if verbose:
-                    print("Direction (grism, backward) [×1e6]:", bdirection*1e6)
+                    print("Direction (grism, backward) [×1e6]:",
+                          bdirection*1e6)
             # Collimator
             fposition = self.collimator.backward(bdirection,
                                                  lbda, self.gamma)
@@ -1632,12 +1637,8 @@ class Spectrograph(object):
         :rtype: :class:`DetectorPositions`
         """
 
-        # Focal-plane positions [m]
-        if self.telescope:
-            coords = simcfg.get_coords(level='sky')   # 1D complex array
-        else:
-            coords = simcfg.get_coords(level='focal')   # 1D complex array
-
+        # Input coordinates
+        coords = simcfg.get_coords()           # 1D complex array
         # Rotation in the input plane
         angle = simcfg.get('input_angle', 0)   # [rad]
         if angle:
@@ -1649,7 +1650,6 @@ class Spectrograph(object):
         wavelengths = source.spectrum.wavelengths
 
         # Simulation parameters
-        npx = simcfg.get('wave_npx', 1)
         orders = simcfg.get('orders', [1])
         det_angle = self.config.get('detector_angle', 0)
         det_dxdy = self.config.get('detector_dxdy', 0)
@@ -1697,7 +1697,7 @@ def str_direction(direction):
     # return "{:+.2f} x {:+.2f} arcmin".format(
     #     N.arctan(tantheta)*RAD2MIN, phi*RAD2MIN)
 
-    z = position * RAD2MIN
+    z = direction * RAD2MIN
     return "{:+.1f} × {:+.1f} arcmin".format(z.real, z.imag)
 
 # Simulations ==============================
@@ -1729,7 +1729,7 @@ def plot_SNIFS_R(optcfg=OptConfig(SNIFS_R),
     ax = detector.plot(orders=(-1, 0, 1, 2), blaze=True)
     ax.set_aspect('auto')
     ax.axis(N.array([-2000, 2000, -4000, 4000]) *
-            optcfg['detector_pxsize']*1e3) # [mm]
+            optcfg['detector_pxsize']*1e3)  # [mm]
 
     return ax
 
