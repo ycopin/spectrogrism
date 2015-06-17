@@ -89,7 +89,7 @@ SNIFS_R = dict(
 
 #: SNIFS simulation configuration
 SNIFS_SIMU = dict(
-    name="standard, order=(-1, 0, +1, +2)",      # Configuration name
+    name=u"standard",                 # Configuration name
     wave_npx=10,                      # Nb of pixels per spectrum
     orders=range(-1, 3),              # Dispersion orders
     # Focal plane sampling
@@ -121,7 +121,7 @@ class Configuration(dict):
 
     def __str__(self):
 
-        s = [" {} {!r} ".format(self.conftype, self.name).center(60, '-')]
+        s = [" {} {!r} ".format(self.conftype, self.name).center(70, '-')]
         s += [ '  {:10s}: {}'.format(key, self[key])
                for key in sorted(self.keys()) ]
 
@@ -877,7 +877,7 @@ class Camera(CameraOrCollimator):
 
     def __str__(self):
 
-        return "Camera:     {}".format(super(Camera, self).__str__())
+        return "Camera: {}".format(super(Camera, self).__str__())
 
     def forward(self, direction, wavelengths):
         r"""
@@ -1378,10 +1378,66 @@ class Grism(object):
         return lbda0
 
 
+class Detector(object):
+
+    """
+    A simple translated and rotated detector.
+
+    .. autosummary::
+
+       forward
+       backward
+    """
+
+    def __init__(self, config):
+        """
+        Initialization from optical configuration dictionary.
+
+        :param dict config: optical configuration
+        :raise KeyError: missing configuration key
+        """
+
+        self.dx = config.get('detector_dx', 0)        #: X-offset [m]
+        self.dy = config.get('detector_dy', 0)        #: Y-offset [m]
+        self.angle = config.get('detector_angle', 0)  #: Rotation [rad]
+        self.pxsize = config['detector_pxsize']       #: Pixel size [m]
+
+    @property
+    def dxdy(self):
+        """
+        Expose complex offset dx + 1j*dy [m].
+        """
+
+        return complex(self.dx, self.dy)
+
+    @dxdy.setter
+    def dxdy(self, dxdy):
+
+        self.dx, self.dy = dxdy.real, dxdy.imag
+
+    def __str__(self):
+
+        return """Detector: pxsize={:.0f} µm
+  offset=({:+.3f}, {:+.3f}) mm, angle={:.1f} deg""".format(
+            self.pxsize / 1e-6,
+            self.dx / 1e-3, self.dy / 1e-3, self.angle * RAD2DEG)
+
+    def forward(self, positions):
+        """Forward propagation to detector."""
+
+        return (positions + self.dxdy) * N.exp(1j * self.angle)
+
+    def backward(self, positions):
+        """Backward propagation from detector."""
+
+        return positions / N.exp(1j * self.angle) - self.dxdy
+
+
 class Spectrograph(object):
 
     """
-    A :class:`Collimator`, a :class:`Grism` and a :class:`Camera`.
+    A :class:`Collimator`, a :class:`Grism`, a :class:`Camera` and a
+    :class:`Detector`, plus an optional :class:`Telescope`.
 
     .. autosummary::
 
@@ -1392,23 +1448,22 @@ class Spectrograph(object):
        simulate
     """
 
-    def __init__(self, config, grism_on=True, add_telescope=False):
+    def __init__(self, config, grism_on=True, telescope=None):
         """
         Initialize spectrograph from optical configuration.
 
         :param OptConfig config: optical configuration
         :param bool grism_on: dispersor presence
-        :param bool add_telescope: add input telescope
+        :param Telescope telescope: input telescope
         """
 
-        self.config = config
+        self.config = config                       #: Optical configuration
 
-        self.telescope = None
-        if add_telescope:                 # Add a telescope
-            self.telescope = Telescope(self.config)
-        self.collimator = Collimator(self.config)
-        self.grism = Grism(self.config)
-        self.camera = Camera(self.config)
+        self.telescope = telescope                 #: Telescope
+        self.collimator = Collimator(self.config)  #: Collimator
+        self.grism = Grism(self.config)            #: Grism
+        self.camera = Camera(self.config)          #: Camera
+        self.detector = Detector(self.config)      #: Detector
 
         self.grism_on = grism_on
 
@@ -1435,11 +1490,11 @@ class Spectrograph(object):
         else:
             s.append("Grism:      ***REMOVED***")
         s.append(self.camera.__str__())
+        s.append(self.detector.__str__())
         s.append("Spectrograph magnification: {0.gamma:.3f}".format(self))
         wref = self.config.wref
         s.append("Central dispersion: {:.2f} AA/px at {:.2f} µm".format(
-            self.dispersion(wref) / 1e-10 * self.config['detector_pxsize'],
-            wref / 1e-6))
+            self.dispersion(wref) / 1e-10 * self.detector.pxsize, wref / 1e-6))
 
         return '\n'.join(s)
 
@@ -1505,6 +1560,8 @@ class Spectrograph(object):
                 directions, wavelengths, order=order)
         # Camera
         positions = self.camera.forward(directions, wavelengths)
+        # Detector
+        positions = self.detector.forward(positions)
 
         return positions
 
@@ -1520,6 +1577,8 @@ class Spectrograph(object):
         :rtype: complex
         """
 
+        # Detector
+        position = self.detector.backward(position)
         # Camera
         direction = self.camera.backward(position, wavelength)
         if self.grism_on:
@@ -1582,6 +1641,10 @@ class Spectrograph(object):
         # Camera
         dpositions = self.camera.forward(fdirections, wavelengths)
         if verbose:
+            print("Positions (camera, forward) [mm]:", dpositions / 1e-3)
+        # Detector
+        dpositions = self.detector.forward(dpositions)
+        if verbose:
             print("Positions (detector) [mm]:", dpositions / 1e-3)
 
         # Loop over positions in detector plane
@@ -1590,6 +1653,10 @@ class Spectrograph(object):
             if verbose:
                 print("Test position (detector) [mm]:", dpos / 1e-3,
                       "Wavelength [µm]:", lbda / 1e-6)
+            # Detector
+            dpos = self.detector.backward(dpos)
+            if verbose:
+                print("Direction (detector, backward) [mm]:", dpos / 1e-3)
             # Camera
             bdirection = self.camera.backward(dpos, lbda)
             if verbose:
@@ -1628,7 +1695,7 @@ class Spectrograph(object):
         """
         Simulate detector spectra.
 
-        :param dict simcfg: input simulation
+        :param SimConfig simcfg: input simulation configuration
         :return: simulated spectra
         :rtype: :class:`DetectorPositions`
         """
@@ -1647,8 +1714,6 @@ class Spectrograph(object):
 
         # Simulation parameters
         orders = simcfg.get('orders', [1])
-        det_angle = self.config.get('detector_angle', 0)
-        det_dxdy = self.config.get('detector_dxdy', 0)
 
         # Detector positions
         detector = DetectorPositions(
@@ -1660,13 +1725,107 @@ class Spectrograph(object):
             source.coords = xy    # Update source position
             for order in orders:  # Loop over dispersion orders
                 dpos = self.forward(source, order)  # Detector plane position
-                if det_dxdy:      # Offset in the detector plane
-                    dpos += det_dxdy
-                if det_angle:     # Rotation in the detector plane
-                    dpos *= N.exp(1j * det_angle)
                 detector.add_spectrum(source.coords, dpos, order=order)
 
         return detector
+
+    def update(self, **kwargs):
+        """
+        Update both optical configuration and structure parameters.
+        """
+
+        for name, value in kwargs.iteritems():
+            # Test parameter validity
+            if name not in self.config:
+                raise KeyError("Unknown optical parameter '{}'".format(name))
+            # Update optical configuration
+            self.config[name] = value
+            # Update structure
+            attrs = name.split('_')  # [ attributes ]
+            obj = self
+            for attr in attrs[:-1]:
+                try:
+                    obj = getattr(obj, attr)
+                except AttributeError:
+                    raise KeyError("Unknown attribute '{}' in {}".format(
+                        attr, obj.__class__.__name__))
+            attr = attrs[-1]
+            try:
+                getattr(obj, attr)
+            except AttributeError:
+                raise KeyError("Unknown final attribute '{}' in {}".format(
+                    attr, obj.__class__.__name__))
+            else:
+                setattr(obj, attr, value)
+
+    def adjust(self, detector, simcfg,
+               optparams=['telescope_flength',
+                          'collimator_flength',
+                          'camera_flength'], tol=1e-6):
+        """
+        Adjust optical parameters *optparam* to match target *detector*
+        positions, using simulation configuration *simcfg*.
+
+        .. Warning:: adjustment of the 1st-order only.
+        """
+
+        import scipy.optimize as SO
+
+        if simcfg.get('orders', [1]) != [1]:
+            raise NotImplementedError(
+                "Adjustment is implemented for 1st-order only")
+
+        try:
+            guessparams = [ self.config[name] for name in optparams ]
+        except KeyError:
+            raise KeyError("Unknown optical parameter '{}'".format(name))
+
+        # Initial guess simulation
+        simu = self.simulate(simcfg)
+        # Test compatibility with objective detector only once
+        simu.assert_compatibility(detector)
+
+        print(" Initial parameters ".center(50, '-'))
+        for name, value in zip(optparams, guessparams):
+            print("  {:20s}: {}".format(name, value))
+
+        # Objective dataframe
+        detdf = detector.spectra[1]
+
+        # Compute initial RMS
+        dtot = ((simu.spectra[1] - detdf).abs()**2).values.sum()
+        rms = (dtot / detdf.size) ** 0.5  # [m]
+        print("  RMS: {} mm = {} px".format(
+            rms / 1e-3, rms / self.detector.pxsize))
+
+        def objfun(pars, detector_frame):
+            # Update optical configuration
+            self.update(**dict(zip(optparams, pars)))
+            # Simulate
+            simu = self.simulate(simcfg)
+            # Position (complex) offsets (1st-order)
+            dpos = simu.spectra[1] - detector_frame  # [m]
+            # Total distance
+            dtot = (dpos.abs()**2).values.sum()      # [m²]
+
+            return dtot
+
+        result = SO.minimize(objfun,
+                             guessparams,
+                             args=(detdf,),
+                             method='tnc',
+                             options={'disp': True, 'xtol': tol})
+        print("Minimization: {}".format(result.message))
+        if result.success:
+            print(" Adjusted parameters ".center(50, '-'))
+            for name, value in zip(optparams, N.atleast_1d(result.x)):
+                print("  {:20s}: {}".format(name, value))
+            # Compute final RMS
+            result.rms = (result.fun / detdf.size) ** 0.5  # [m]
+            print("  RMS: {} mm = {} px".format(
+                result.rms / 1e-3, result.rms / self.detector.pxsize))
+
+        return result
 
 # Utility functions =======================================
 
@@ -1725,7 +1884,7 @@ def plot_SNIFS_R(optcfg=OptConfig(SNIFS_R),
     ax = detector.plot(orders=(-1, 0, 1, 2), blaze=True)
     ax.set_aspect('auto')
     ax.axis(N.array([-2000, 2000, -4000, 4000]) *
-            optcfg['detector_pxsize'] / 1e-3)  # [mm]
+            spectro.detector.pxsize / 1e-3)  # [mm]
 
     return ax
 

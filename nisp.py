@@ -12,7 +12,8 @@ nisp
 .. Warning:: Questions to JZ:
 
    * input y-coordinates are offset by +0.85 deg
-   * input y-coordinates are not centered: (dx, dy) = (0.689, -4.194)
+   * input y-coordinates are not centered: (dx, dy) = (+0.7, 179.8) mm,
+     corresponding to (+0.7, -4.2) mm for centered y-coordinates
    * input position (+0.4, +1.25) is missing the 1.85 µm wavelength
 """
 
@@ -43,31 +44,42 @@ except ImportError:
 #: Sources: *NISP Technical Description* (EUCL-LAM-OTH-7-001)
 NISP_R = dict(
     name="NISP-R",
-    wave_ref=1.5e-6,                  # Reference wavelength [m]
-    wave_range=[1.25e-6, 1.85e-6],    # Wavelength range [m]
+    wave_ref=1.5e-6,                    # Reference wavelength [m]
+    wave_range=[1.25e-6, 1.85e-6],      # Wavelength range [m]
+    # Telescope
+    telescope_flength=24.5,             # Telescope focal length [m]
     # Grism
-    grism_on=True,                    # Is prism on the way?
-    grism_dispersion=9.8,             # Informative spectral dispersion [AA/px]
-    grism_prism_material='FS',        # Prism glass
-    grism_grating_material='FS',      # Grating resine
+    grism_on=True,                      # Is prism on the way?
+    grism_dispersion=9.8,               # Informative spectral dispersion [AA/px]
+    grism_prism_material='FS',          # Prism glass
+    grism_grating_material='FS',        # Grating resine
     grism_prism_angle=2.88/S.RAD2DEG,   # Prism angle [rad]
-    # grism_grating_rho=19.29,         # Grating groove density [lines/mm]
-    grism_grating_rho=13.72,          # Grating groove density [lines/mm]
+    # grism_grating_rho=19.29,          # Grating groove density [lines/mm]
+    grism_grating_rho=13.72,            # Grating groove density [lines/mm]
     grism_grating_blaze=2.6/S.RAD2DEG,  # Blaze angle [rad]
     # Detector
-    detector_pxsize=18e-6,            # Detector pixel size [m]
-    # Telescope
-    telescope_flength=24.9,           # Telescope focal length [m]
+    detector_pxsize=18e-6,              # Detector pixel size [m]
 )
 
 # Guessed values (not from official documents)
 NISP_R.update(
+    # Telescope
+    telescope_flength=25.2,            # Telescope focal length [m]
     # Collimator
-    collimator_flength=2000e-3,       # Focal length [m]
+    collimator_flength=1946e-3,        # Focal length [m]
+    collimator_distortion=2.8e-3,
+    # Grism
+    grism_prism_angle=2.70/S.RAD2DEG,  # Prism angle [rad]
+    grism_grating_rho=13.1,            # Grating groove density [lines/mm]
     # Camera
-    camera_flength=1000e-3,           # Focal length [m]
-    # Detector
-    detector_dxdy=0.689e-3 - 4.194e-3j,  # Detector offset [m]
+    camera_flength=957e-3,             # Focal length [m]
+    camera_distortion=29.6e-3,
+    # Detector (without input recentering)
+    # detector_dx=+0.70e-3,            # Detector x-offset [m]
+    # detector_dy=+179.7e-3,           # Detector y-offset [m]
+    # Detector (with input offset of -0.85 deg)
+    detector_dx=+0.70e-3,              # Detector x-offset [m]
+    detector_dy=-4.20e-3,              # Detector y-offset [m]
 )
 
 # # NISP simulation configuration (now directly read from simulation)
@@ -128,9 +140,9 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         warnings.warn("Setting approximately null xindeg to 0")
         data['xindeg'][N.abs(data['xindeg']) < 1e-12] = 0
 
-        # Cleanup: offset yindeg by 0.85 deg
-        warnings.warn("Offsetting Yin by 0.85 deg")
-        data['yindeg'] -= 0.85
+        # Cleanup: offset yindeg by -0.85 deg
+        warnings.warn("Offsetting Yin by -0.85 deg")
+        data['yindeg'] += -0.85
 
         # Cleanup: upper-right position has no 1.85 µm wavelength
         warnings.warn("Discarding wavelengths > 1.81 µm")
@@ -222,7 +234,7 @@ if __name__ == '__main__':
 
     spectro = S.Spectrograph(optcfg,
                              grism_on=optcfg.get('grism_on', True),
-                             add_telescope=True)
+                             telescope=S.Telescope(optcfg))
 
     # Test
     try:
@@ -239,14 +251,31 @@ if __name__ == '__main__':
     zmx.detector.assert_compatibility(simu)
     # Dataframe of position offsets for 1st-order
     dpos = simu.spectra[1] - zmx.detector.spectra[1]
-    rms = N.sqrt((dpos.abs()**2).values.mean())
+    rms = (dpos.abs()**2).values.mean()**0.5
     print("RMS = {:.4f} mm = {:.2f} px".format(
-        rms / 1e-3, rms / optcfg['detector_pxsize']))
+        rms / 1e-3, rms / spectro.detector.pxsize))
 
-    simu.plot(ax=ax, zorder=0,                      # Draw below Zemax
-              label="{} (RMS={:.1f} px)".format(
-                  simu.name, rms / optcfg['detector_pxsize']))
+    # simu.plot(ax=ax, zorder=0,                      # Draw below Zemax
+    #           label="{} (RMS={:.1f} px)".format(
+    #               simu.name, rms / spectro.detector.pxsize))
+
+    # Optical adjustment
+    result = spectro.adjust(zmx.detector, simcfg, tol=1e-4,
+                            optparams=[
+                                'detector_dx', 'detector_dy',
+                                # 'telescope_flength',
+                                # 'collimator_flength', 'collimator_distortion',
+                                # 'camera_flength', 'camera_distortion',
+                            ])
+    if result.success:
+        # Adjusted simulation
+        simu2 = spectro.simulate(simcfg)
+        simu2.plot(ax=ax, zorder=0,
+                   label="Adjusted {} (RMS={:.1f} px)".format(
+                       simu.name,
+                       result.rms / spectro.detector.pxsize))
+
     ax.axis([-100, +100, -100, +100])               # [mm]
-
     ax.legend(fontsize='small', frameon=True, framealpha=0.5)
+
     P.show()
