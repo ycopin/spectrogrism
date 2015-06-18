@@ -3,6 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+.. Fork-me ribbon
 .. raw:: html
 
    <a href="https://github.com/ycopin/spectrogrism">
@@ -46,17 +47,21 @@ Optical elements
 The :class:`spectrogrism.Spectrograph` model includes optical elements between
 the input focal plane and the output detector plane:
 
+- an optional :class:`spectrogrism.Telescope`, which converts a direction in
+  the sky into a position in the focal plane;
 - a :class:`spectrogrism.Collimator`, which converts a position (in the focal
-  plane) into a direction
+  plane) into a direction;
 - a :class:`spectrogrism.Grism` (an association of a
   :class:`spectrogrism.Prism` and a :class:`spectrogrism.Grating`), which
   converts a direction into another direction depending on wavelength and
-  dispersion order,
+  dispersion order;
 - a :class:`spectrogrism.Camera`, which converts a direction into a position
-  (in the detector plane).
+  (in the detector plane);
+- a :class:`spectrogrism.Detector`, which actually project positions onto the
+  translated and rotated detector.
 
 Both :class:`spectrogrism.Collimator` and :class:`spectrogrism.Camera` include
-geometric radial distortion and lateral colors (transverse chromatic
+geometric quadratic radial distortion and lateral colors (transverse chromatic
 aberrations).  :class:`spectrogrism.Prism` includes 3D-tilts.
 
 .. raw:: html
@@ -81,9 +86,6 @@ aberrations).  :class:`spectrogrism.Prism` includes 3D-tilts.
 ..    0 (undispersed), 1 (middle) and 2 (bottom) are represented.  The size of the
 ..    symbol somehow encodes the blaze function of the spectrograph.
 
-A :class:`spectrogrism.Telescope` helper class, which converts a
-direction in the sky into a position in the focal plane, is also
-provided.
 
 Positions and directions
 ------------------------
@@ -113,8 +115,8 @@ References
 Near Infrared Spectrometer and Photometer (NISP)
 ================================================
 
-The `spectrogrism` optical model is used to simulate the Near Infrared
-Spectrometer and Photometer (NISP) of EUCLID.  Julien Zoubian provided full
+The :mod:`spectrogrism` optical model is used to simulate the *Near Infrared
+Spectrometer and Photometer* (NISP) of EUCLID.  Julien Zoubian provided full
 sky-to-detector Zemax 1st-order simulations for a nominal NISP configuration.
 
 .. raw:: html

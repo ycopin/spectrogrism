@@ -39,10 +39,7 @@ import pandas as PD
 import matplotlib.pyplot as P
 try:
     import seaborn
-    seaborn.set_style("whitegrid",
-                      # {'xtick.major.size': 6, 'xtick.minor.size': 3,
-                      #  'ytick.major.size': 6, 'ytick.minor.size': 3},
-    )
+    seaborn.set_style("whitegrid")
 except ImportError:
     pass
 
@@ -50,8 +47,7 @@ except ImportError:
 N.set_printoptions(linewidth=100, threshold=10)
 PD.set_option("display.float.format",
               # PD.core.format.EngFormatter(accuracy=2, use_eng_prefix=True)
-              lambda x: '{:g}'.format(x)
-)
+              lambda x: '{:g}'.format(x))
 
 # Constants ===============================================
 
@@ -428,7 +424,8 @@ class DetectorPositions(object):
                                                   columns=(rcoords,)))
         df[rcoords] = detector_positions
 
-    def plot(self, ax=None, coords=None, orders=None, blaze=False, **kwargs):
+    def plot(self, ax=None, coords=None, orders=None, blaze=False,
+             subsampling=0, **kwargs):
         """
         Plot spectra on detector plane.
 
@@ -436,6 +433,7 @@ class DetectorPositions(object):
         :param tuple coords: selection of input coordinates to be plotted
         :param tuple orders: selection of dispersion orders to be plotted
         :param bool blaze: encode the blaze function in the marker size
+        :param int subsampling: sub-sample coordinates and wavelengths
         :return: :class:`matplotlib.pyplot.Axes`
         """
 
@@ -455,8 +453,14 @@ class DetectorPositions(object):
         cmap = P.matplotlib.colors.LinearSegmentedColormap(
             'dummy', P.get_cmap('Spectral_r')._segmentdata, len(self.lbda))
 
+        # Sub-sampling of coordinates and wavelengths
+        if subsampling:
+            lbda = self.lbda[::subsampling]
+        else:
+            lbda = self.lbda
+
         # Default blaze transmission
-        bztrans = N.ones_like(self.lbda)
+        bztrans = N.ones_like(lbda)
 
         if orders is None:                        # Plot all orders
             orders = sorted(self.spectra)
@@ -474,14 +478,16 @@ class DetectorPositions(object):
                                 self.markers.get(abs(order), 'o'))
 
             if blaze and self.spectrograph:
-                bztrans = self.spectrograph.grism.blaze_function(
-                    self.lbda, order)
+                bztrans = self.spectrograph.grism.blaze_function(lbda, order)
                 s = kwcopy.pop('s', N.maximum(20 * N.sqrt(bztrans), 5))
             else:
                 s = kwcopy.pop('s', 20)
 
             if coords is None:                    # Plot all spectra
                 coords = self.get_coords(order=order)
+
+            if subsampling:
+                coords = coords[::subsampling]
 
             for xy in coords:                     # Loop over sources
                 try:
@@ -491,8 +497,11 @@ class DetectorPositions(object):
                         str_position(xy)))
                     continue
 
+                if subsampling:
+                    positions = positions[::subsampling]
+
                 sc = ax.scatter(positions.real, positions.imag,
-                                c=self.lbda / 1e-6,   # Wavelength [µm]
+                                c=lbda / 1e-6,   # Wavelength [µm]
                                 cmap=cmap, s=s, marker=marker, **kwcopy)
 
                 kwcopy.pop('label', None)  # Label only for one source
@@ -1855,6 +1864,25 @@ def str_direction(direction):
     z = direction * RAD2MIN     # [arcmin]
     return "{:+.1f} × {:+.1f} arcmin".format(z.real, z.imag)
 
+
+def dump_mpl3d(ax, filename):
+
+    import mpld3
+
+    # Remove legend title if any (https://github.com/jakevdp/mpld3/issues/275)
+    leg = ax.get_legend()
+    if leg is not None:
+        txt = leg.get_title().get_text()
+        if txt == 'None':
+            leg.set_title("")
+
+    mpld3.plugins.connect(ax.figure,
+                          mpld3.plugins.MousePosition(fontsize='small'))
+    mpld3.save_html(ax.figure, filename,
+                    no_extras=False, template_type='simple')
+    print("MPLD3 figure saved in", filename)
+
+
 # Simulations ==============================
 
 
@@ -1898,16 +1926,8 @@ if __name__ == '__main__':
     embed_html = True
     if embed_html:
         try:
-            import mpld3
+            dump_mpl3d(ax, 'SNIFS-R.html')
         except ImportError:
             warnings.warn("MPLD3 is not available, cannot export to HTML.")
-            embed_html = False
-    if embed_html:
-        mpld3.plugins.connect(ax.figure,
-                              mpld3.plugins.MousePosition(fontsize='small'))
-        figname = 'SNIFS-R.html'
-        mpld3.save_html(ax.figure, figname,
-                        no_extras=False, template_type='simple')
-        print("MPLD3 figure saved in", figname)
 
     P.show()

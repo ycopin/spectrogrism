@@ -11,7 +11,7 @@ nisp
    * output y-coordinates are not centered: (dx, dy) = (+0.7, 179.8) mm,
      corresponding to (+0.7, -4.2) mm for centered y-coordinates
    * input position (+0.4, +1.25) is missing the 1.85 µm wavelength
-   
+
 .. autosummary::
 
    Zemax
@@ -212,8 +212,15 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
     def plot_output(self, ax=None, **kwargs):
         """Plot output (detector) coordinates (pixels)."""
 
-        ax = self.detector.plot(ax=ax, orders=(1,), blaze=False, **kwargs)
-        ax.set_title("{} - PSF centroid".format(self.filename))
+        ax = self.detector.plot(ax=ax,
+                                orders=kwargs.pop('orders', (1,)),
+                                blaze=kwargs.pop('blaze', False),
+                                subsampling=kwargs.pop('subsampling', 0),
+                                **kwargs)
+        title = "{} - PSF centroid".format(self.filename)
+        if subsampling:
+            title += u" (subsampled ×{})".format(subsampling)
+        ax.set_title(title)
 
         return ax
 
@@ -221,12 +228,16 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 if __name__ == '__main__':
 
     filename = "Zemax/run_190315.dat"
+    subsampling = 2
+    adjust = False
+
     zmx = Zemax(filename)
     print(zmx)
 
     # Zemax simulation
     # ax = zmx.plot_input()
-    ax = zmx.plot_output(marker='.', s=20, edgecolor='k')
+    ax = zmx.plot_output(subsampling=subsampling,
+                         marker='.', s=20, edgecolor='k')
 
     # Optical modeling
     optcfg = S.OptConfig(NISP_R)  # Optical configuration (default NISP)
@@ -255,43 +266,36 @@ if __name__ == '__main__':
     print("RMS = {:.4f} mm = {:.2f} px".format(
         rms / 1e-3, rms / spectro.detector.pxsize))
 
-    # simu.plot(ax=ax, zorder=0,                      # Draw below Zemax
-    #           label="{} (RMS={:.1f} px)".format(
-    #               simu.name, rms / spectro.detector.pxsize))
-
-    # Optical adjustment
-    result = spectro.adjust(zmx.detector, simcfg, tol=1e-4,
-                            optparams=[
-                                'detector_dx', 'detector_dy',
-                                # 'telescope_flength',
-                                # 'collimator_flength', 'collimator_distortion',
-                                # 'camera_flength', 'camera_distortion',
-                            ])
-    if result.success:
-        # Adjusted simulation
-        simu2 = spectro.simulate(simcfg)
-        simu2.plot(ax=ax, zorder=0,
-                   label="Adjusted {} (RMS={:.1f} px)".format(
-                       simu.name,
-                       result.rms / spectro.detector.pxsize))
+    if not adjust:                  # Out-of-the-box optical model
+        simu.plot(ax=ax, zorder=0,  # Draw below Zemax
+                  subsampling=subsampling,
+                  label="{} (RMS={:.1f} px)".format(
+                      simu.name, rms / spectro.detector.pxsize))
+    else:                           # Optical adjustment
+        result = spectro.adjust(
+            zmx.detector, simcfg, tol=1e-4,
+            optparams=[
+                'detector_dx', 'detector_dy',
+                # 'telescope_flength',
+                # 'collimator_flength', 'collimator_distortion',
+                # 'camera_flength', 'camera_distortion',
+            ])
+        if result.success:          # Adjusted simulation
+            simu2 = spectro.simulate(simcfg)
+            simu2.plot(ax=ax, zorder=0,
+                       subsampling=subsampling,
+                       label="Adjusted {} (RMS={:.1f} px)".format(
+                           simu.name,
+                           result.rms / spectro.detector.pxsize))
 
     ax.axis([-100, +100, -100, +100])               # [mm]
     ax.legend(fontsize='small', frameon=True, framealpha=0.5)
 
-    embed_html = True    
+    embed_html = True
     if embed_html:
         try:
-            import mpld3
+            S.dump_mpl3d(ax, zmx.filename.replace('.dat', '.html'))
         except ImportError:
             warnings.warn("MPLD3 is not available, cannot export to HTML.")
-            embed_html = False
-    if embed_html:
-        # https://github.com/jakevdp/mpld3/issues/275
-        mpld3.plugins.connect(ax.figure,
-                              mpld3.plugins.MousePosition(fontsize='small'))
-        figname = zmx.filename.replace('.dat', '.html')
-        mpld3.save_html(ax.figure, figname,
-                        no_extras=False, template_type='simple')
-        print("MPLD3 figure saved in", figname)
 
     P.show()
