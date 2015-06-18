@@ -3,6 +3,14 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+.. raw:: html
+
+   <a href="https://github.com/ycopin/spectrogrism">
+     <img style="position: fixed; top: 0; right: 0; border: 0;" 
+          src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png" 
+          alt="Fork me on GitHub">
+   </a>
+
 =====================================================================
                   Grism-based Spectrograph Modeling
 =====================================================================
@@ -51,12 +59,27 @@ Both :class:`spectrogrism.Collimator` and :class:`spectrogrism.Camera` include
 geometric radial distortion and lateral colors (transverse chromatic
 aberrations).  :class:`spectrogrism.Prism` includes 3D-tilts.
 
-.. figure:: SNIFS-R.*
+.. raw:: html
+  :file: SNIFS-R.html
 
-   **Figure:** Modeling of 5×5 sources in the detector plane at 10 individual
-   wavelengths, using the SNIFS-R optical configuration.  Orders -1 (very top),
-   0 (undispersed), 1 (middle) and 2 (bottom) are represented.  The size of the
-   symbol somehow encodes the blaze function of the spectrograph.
+.. raw:: latex
+
+   \begin{figure}[htbp]
+     \centering
+     \includegraphics{SNIFS-R}
+     \caption{\textbf{Figure:} Modeling of 5×5 sources in the detector
+       plane at 10 individual wavelengths, using the SNIFS-R optical
+       configuration.  Orders -1 (very top), 0 (undispersed), 1
+       (middle) and 2 (bottom) are represented.  The size of the
+       symbol somehow encodes the blaze function of the spectrograph.}
+   \end{figure}
+
+.. .. figure:: SNIFS-R.*
+.. 
+..    **Figure:** Modeling of 5×5 sources in the detector plane at 10 individual
+..    wavelengths, using the SNIFS-R optical configuration.  Orders -1 (very top),
+..    0 (undispersed), 1 (middle) and 2 (bottom) are represented.  The size of the
+..    symbol somehow encodes the blaze function of the spectrograph.
 
 A :class:`spectrogrism.Telescope` helper class, which converts a
 direction in the sky into a position in the focal plane, is also
@@ -94,12 +117,27 @@ The `spectrogrism` optical model is used to simulate the Near Infrared
 Spectrometer and Photometer (NISP) of EUCLID.  Julien Zoubian provided full
 sky-to-detector Zemax 1st-order simulations for a nominal NISP configuration.
 
-.. figure:: run_190315_fit.*
+.. raw:: html
+  :file: run_190315.html
 
-   **Figure:** Zemax sky-to-detector 1st-order simulation of 17×17 sources in
-   the detector plane at 13 individual wavelengths (*small symbols*) and
-   minimally-adjusted optical model using nominal NISP parameters (*large
-   symbols*).
+.. raw:: latex
+
+   \begin{figure}[htbp]
+     \centering
+     \includegraphics{run_190315_fit}
+     \caption{\textbf{Figure:} Zemax sky-to-detector 1st-order
+       simulation of 17×17 sources in the detector plane at 13
+       individual wavelengths (\emph{small symbols}) and
+       minimally-adjusted optical model using nominal NISP parameters
+       (\emph{large symbols}).}
+   \end{figure}
+
+.. .. figure:: run_190315_fit.*
+.. 
+..    **Figure:** Zemax sky-to-detector 1st-order simulation of 17×17 sources in
+..    the detector plane at 13 individual wavelengths (*small symbols*) and
+..    minimally-adjusted optical model using nominal NISP parameters (*large
+..    symbols*).
 
 Code documentation
 ==================

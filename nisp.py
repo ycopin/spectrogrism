@@ -5,16 +5,16 @@
 nisp
 ----
 
+.. Warning:: Questions to JZ regarding the simulations:
+
+   * input y-coordinates are offset by +0.85 deg
+   * output y-coordinates are not centered: (dx, dy) = (+0.7, 179.8) mm,
+     corresponding to (+0.7, -4.2) mm for centered y-coordinates
+   * input position (+0.4, +1.25) is missing the 1.85 µm wavelength
+   
 .. autosummary::
 
    Zemax
-
-.. Warning:: Questions to JZ:
-
-   * input y-coordinates are offset by +0.85 deg
-   * input y-coordinates are not centered: (dx, dy) = (+0.7, 179.8) mm,
-     corresponding to (+0.7, -4.2) mm for centered y-coordinates
-   * input position (+0.4, +1.25) is missing the 1.85 µm wavelength
 """
 
 from __future__ import division, print_function
@@ -277,5 +277,20 @@ if __name__ == '__main__':
 
     ax.axis([-100, +100, -100, +100])               # [mm]
     ax.legend(fontsize='small', frameon=True, framealpha=0.5)
+
+    embed_html = True    
+    if embed_html:
+        try:
+            import mpld3
+        except ImportError:
+            warnings.warn("MPLD3 is not available, cannot export to HTML.")
+            embed_html = False
+    if embed_html:
+        mpld3.plugins.connect(ax.figure,
+                              mpld3.plugins.MousePosition(fontsize='small'))
+        figname = zmx.filename.replace('.dat', '.html')
+        mpld3.save_html(ax.figure, figname,
+                        no_extras=False, template_type='simple')
+        print("MPLD3 figure saved in", figname)
 
     P.show()

@@ -1895,4 +1895,19 @@ if __name__ == '__main__':
 
     ax = plot_SNIFS_R(test=True)
 
+    embed_html = True
+    if embed_html:
+        try:
+            import mpld3
+        except ImportError:
+            warnings.warn("MPLD3 is not available, cannot export to HTML.")
+            embed_html = False
+    if embed_html:
+        mpld3.plugins.connect(ax.figure,
+                              mpld3.plugins.MousePosition(fontsize='small'))
+        figname = 'SNIFS-R.html'
+        mpld3.save_html(ax.figure, figname,
+                        no_extras=False, template_type='simple')
+        print("MPLD3 figure saved in", figname)
+
     P.show()
