@@ -286,6 +286,7 @@ if __name__ == '__main__':
             warnings.warn("MPLD3 is not available, cannot export to HTML.")
             embed_html = False
     if embed_html:
+        # https://github.com/jakevdp/mpld3/issues/275
         mpld3.plugins.connect(ax.figure,
                               mpld3.plugins.MousePosition(fontsize='small'))
         figname = zmx.filename.replace('.dat', '.html')
