@@ -5,13 +5,6 @@
 nisp
 ----
 
-.. Warning:: Questions to JZ regarding the simulations:
-
-   * input y-coordinates are offset by +0.85 deg
-   * output y-coordinates are not centered: (dx, dy) = (+0.7, 179.8) mm,
-     corresponding to (+0.7, -4.2) mm for centered y-coordinates
-   * input position (+0.4, +1.25) is missing the 1.85 µm wavelength
-
 .. autosummary::
 
    Zemax
@@ -82,16 +75,6 @@ NISP_R.update(
     detector_dy=-4.20e-3,              # Detector y-offset [m]
 )
 
-# # NISP simulation configuration (now directly read from simulation)
-# ZMX_SIMU = dict(
-#     name="Zemax run_190315",
-#     wave_npx=13,                    # Nb of pixels per spectrum
-#     wave_range=[1.20e-6, 1.80e-6],  # Wavelength range [m]
-#     orders=[1],                     # Dispersion orders
-#     # Sky sampling
-#     input_coords=N.linspace(-0.4, +0.4, 17)/S.RAD2DEG,  # [rad]
-# )
-
 
 class Zemax(object):
 
@@ -132,7 +115,7 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         return s
 
     def load(self, filename):
-        """Load simulation from `filename`."""
+        """Load simulation from *filename*."""
 
         data = N.genfromtxt(filename, dtype=None, names=self.colnames)
 
@@ -228,8 +211,9 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 if __name__ == '__main__':
 
     filename = "Zemax/run_190315.dat"
-    subsampling = 2
-    adjust = False
+    subsampling = 3             # Subsample output plot
+    adjust = False              # Test optical parameter adjustment
+    embed_html = True           # Generate MPLD3 figure
 
     zmx = Zemax(filename)
     print(zmx)
@@ -256,7 +240,7 @@ if __name__ == '__main__':
         print("Spectrograph test: OK")
 
     # Simulation
-    simu = spectro.simulate(simcfg)
+    simu = spectro.simulate(simcfg, orders=(0, 1, 2))
 
     # Compute RMS on 1st-order positions
     zmx.detector.assert_compatibility(simu)
@@ -268,9 +252,18 @@ if __name__ == '__main__':
 
     if not adjust:                  # Out-of-the-box optical model
         simu.plot(ax=ax, zorder=0,  # Draw below Zemax
+                  orders=(0,),
                   subsampling=subsampling,
-                  label="{} (RMS={:.1f} px)".format(
+                  label="{} #0".format(simu.name))
+        simu.plot(ax=ax, zorder=0,  # Draw below Zemax
+                  orders=(1,),
+                  subsampling=subsampling,
+                  label="{} #1 (RMS={:.1f} px)".format(
                       simu.name, rms / spectro.detector.pxsize))
+        simu.plot(ax=ax, zorder=0,  # Draw below Zemax
+                  orders=(2,), blaze=True,
+                  subsampling=subsampling,
+                  label="{} #2".format(simu.name))
     else:                           # Optical adjustment
         result = spectro.adjust(
             zmx.detector, simcfg, tol=1e-4,
@@ -291,7 +284,6 @@ if __name__ == '__main__':
     ax.axis([-100, +100, -100, +100])               # [mm]
     ax.legend(fontsize='small', frameon=True, framealpha=0.5)
 
-    embed_html = True
     if embed_html:
         try:
             S.dump_mpl3d(ax, zmx.filename.replace('.dat', '.html'))

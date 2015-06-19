@@ -67,6 +67,18 @@ aberrations).  :class:`spectrogrism.Prism` includes 3D-tilts.
 .. raw:: html
   :file: SNIFS-R.html
 
+.. raw:: html
+
+   <p class="caption">
+     <span class="caption-text">
+       <strong>Figure:</strong> Modeling of 5×5 sources in the detector
+       plane at 10 individual wavelengths, using the SNIFS-R optical
+       configuration.  Orders -1 (very top), 0 (undispersed), 1
+       (middle) and 2 (bottom) are represented.  The size of the
+       symbol somehow encodes the blaze function of the spectrograph.
+     </span>
+   </p>
+
 .. raw:: latex
 
    \begin{figure}[htbp]
@@ -116,11 +128,24 @@ Near Infrared Spectrometer and Photometer (NISP)
 ================================================
 
 The :mod:`spectrogrism` optical model is used to simulate the *Near Infrared
-Spectrometer and Photometer* (NISP) of EUCLID.  Julien Zoubian provided full
-sky-to-detector Zemax 1st-order simulations for a nominal NISP configuration.
+Spectrometer and Photometer* (NISP) of EUCLID, mimicking full sky-to-detector
+Zemax 1st-order simulations for a nominal NISP configuration (courtesy
+J. Zoubian).
 
 .. raw:: html
   :file: run_190315.html
+
+.. raw:: html
+
+   <p class="caption">
+     <span class="caption-text">
+       <strong>Figure:</strong> Zemax sky-to-detector 1st-order simulation of
+       17×17 sources in the detector plane at 13 individual wavelengths
+       (<em>outlined symbols</em>) and minimally-adjusted optical model using
+       nominal NISP parameters (<em>large symbols</em>), along with 0th- and 
+       2nd-order predictions.
+     </span>
+   </p>
 
 .. raw:: latex
 
@@ -129,9 +154,10 @@ sky-to-detector Zemax 1st-order simulations for a nominal NISP configuration.
      \includegraphics{run_190315_fit}
      \caption{\textbf{Figure:} Zemax sky-to-detector 1st-order
        simulation of 17×17 sources in the detector plane at 13
-       individual wavelengths (\emph{small symbols}) and
+       individual wavelengths (\emph{outlines symbols}) and
        minimally-adjusted optical model using nominal NISP parameters
-       (\emph{large symbols}).}
+       (\emph{large symbols}), along with 0th- and 
+       2nd-order predictions.}
    \end{figure}
 
 .. .. figure:: run_190315_fit.*
@@ -140,6 +166,13 @@ sky-to-detector Zemax 1st-order simulations for a nominal NISP configuration.
 ..    the detector plane at 13 individual wavelengths (*small symbols*) and
 ..    minimally-adjusted optical model using nominal NISP parameters (*large
 ..    symbols*).
+
+.. topic:: Questions regarding the current Zemax simulation:
+
+   * input y-coordinates are offset by +0.85 deg
+   * output y-coordinates are not centered: (dx, dy) = (+0.7, 179.8) mm,
+     corresponding to (+0.7, -4.2) mm for centered y-coordinates
+   * input position (+0.4, +1.25) is missing the 1.85 µm wavelength
 
 Code documentation
 ==================

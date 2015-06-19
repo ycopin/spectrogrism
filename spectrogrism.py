@@ -22,6 +22,7 @@ spectrogrism
    Prism
    Grating
    Grism
+   Detector
    Spectrograph
 """
 
@@ -207,7 +208,7 @@ class SimConfig(Configuration):
         return waves
 
     def get_coords(self):
-        """Simulated input coordinates `[ x + 1j*y ]`."""
+        """Simulated input complex coordinates `[ x + 1j*y ]`."""
 
         incoords = N.atleast_1d(self.get('input_coords', 0))
         if N.ndim(incoords) == 1:        # [x]: generate square sampling x × x
@@ -340,8 +341,8 @@ class PointSource(object):
         """
         Initialize from position/direction and spectrum.
 
-        :param complex coords: 2D-position [m] or direction [rad]
-        :param spectrum: :class:`Spectrum` (default to standard spectrum)
+        :param complex coords: source 2D-position [m] or direction [rad]
+        :param Spectrum spectrum: source spectrum (default to standard spectrum)
         :param kwargs: propagated to :func:`Spectrum.default()` constructor
         """
 
@@ -370,24 +371,30 @@ class DetectorPositions(object):
     complex detector positions, with wavelengths as `index` and coords as
     `columns`.
 
-    .. Warning:: :class:`pandas.Panel` does not seem to support deffered
-       construction, hence the usage of a order-keyed dict.
+    .. Warning::
 
-    .. Warning:: indexing by float is not really a good idea. Float indices
-       (wavelengths and coordinates) are therefore rounded first with a
-       sufficient precision (e.g. nm for wavelengths).
+       * :class:`pandas.Panel` does not seem to support deffered construction,
+         hence the usage of a order-keyed dict.
+       * indexing by float is not precisely a good idea. Float indices
+         (wavelengths and coordinates) are therefore rounded first with a
+         sufficient precision (e.g. nm for wavelengths).
 
     .. autosummary::
 
        add_spectrum
        plot
+       assert_compatibility
     """
 
     markers = {0: '.', 1: 'o', 2: 's'}
 
     def __init__(self, wavelengths, spectrograph=None, name='default'):
         """
-        Initialize from spectrograph and wavelength array.
+        Initialize container from spectrograph and wavelength array.
+
+        :param wavelengths: input wavelengths [m]
+        :param Spectrograph spectrograph: associated spectrograph (if any)
+        :param str name: informative label
         """
 
         if spectrograph is not None:
@@ -400,6 +407,12 @@ class DetectorPositions(object):
         self.name = name                        #: Name
 
     def get_coords(self, order=1):
+        """
+        Return complex detector coordinates for a given dispersion order.
+
+        :param int order: dispersion order
+        :raise KeyError: required order does not exist in current instance
+        """
 
         return N.sort_complex(
             self.spectra[order].columns.values.astype(N.complex))
@@ -430,8 +443,8 @@ class DetectorPositions(object):
         Plot spectra on detector plane.
 
         :param ax: pre-existing :class:`matplotlib.pyplot.Axes` instance if any
-        :param tuple coords: selection of input coordinates to be plotted
-        :param tuple orders: selection of dispersion orders to be plotted
+        :param list coords: selection of input coordinates to be plotted
+        :param list orders: selection of dispersion orders to be plotted
         :param bool blaze: encode the blaze function in the marker size
         :param int subsampling: sub-sample coordinates and wavelengths
         :return: :class:`matplotlib.pyplot.Axes`
@@ -514,11 +527,20 @@ class DetectorPositions(object):
         return ax
 
     def assert_compatibility(self, other, order=1):
+        """
+        Assert compatibility in wavelengths and positions with *other*
+        :class:`DetectorPositions` instance.
+
+        :param DetectorPositions other: other instance to be tested
+        :param int order: dispersion order to be tested
+        :raise AssertionError: incompatible instance
+        """
 
         assert isinstance(other, DetectorPositions)
         assert N.allclose(self.lbda, other.lbda), \
             "{!r} and {!r} have incompatible wavelengths".format(
                 self.name, other.name)
+        assert order in self.spectra and order in other.spectra
         assert N.allclose(self.get_coords(order), other.get_coords(order)), \
             "{!r} and {!r} have incompatible input coordinates".format(
                 self.name, other.name)
@@ -619,7 +641,7 @@ class Material(object):
         """
         Initialize material from its name.
 
-        :param str name: material name (should be in Material.materials)
+        :param str name: material name (should be in :attr:`Material.materials`)
         :raise KeyError: unknown material name
         """
 
@@ -781,7 +803,7 @@ class Collimator(CameraOrCollimator):
         """
         Initialization from optical configuration dictionary.
 
-        :param dict config: optical configuration
+        :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
         """
 
@@ -868,7 +890,7 @@ class Camera(CameraOrCollimator):
         """
         Initialization from optical configuration dictionary.
 
-        :param dict config: optical configuration
+        :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
         """
 
@@ -939,7 +961,7 @@ class Telescope(Camera):
         """
         Initialization from optical configuration dictionary.
 
-        :param dict config: optical configuration
+        :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
         """
 
@@ -966,9 +988,9 @@ class Prism(object):
 
     .. Note::
 
-       * The entry surface is roughly perpendicular (up to the tilt
-         *angles) to the optical axis Oz*.
-       * The apex (prism angle) is aligned with the *x*-axis
+       - The entry surface is roughly perpendicular (up to the tilt
+         angles) to the optical axis Oz.
+       - The apex (prism angle) is aligned with the *x*-axis
 
     .. autosummary::
 
@@ -1006,7 +1028,7 @@ class Prism(object):
     @staticmethod
     def rotation(x, y, theta):
         """
-        2D-rotation of position around origin with direct angle theta [rad].
+        2D-rotation of position around origin with direct angle `theta` [rad].
         """
 
         # Rotation in the complex plane
@@ -1077,7 +1099,7 @@ class Grating(object):
         Initialize grating from optical parameters.
 
         :param float rho: grating groove density [lines/mm]
-        :param material: grating :class:`Material`
+        :param Material material: grating material
         :param float blaze: grating blaze angle [rad]
         """
 
@@ -1156,7 +1178,7 @@ class Grism(object):
         """
         Initialization from optical configuration dictionary.
 
-        :param dict config: optical configuration
+        :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
         """
 
@@ -1217,7 +1239,7 @@ class Grism(object):
 
         :param numpy.ndarray wavelengths: wavelengths [m]
         :param int order: dispersion order
-        :return: blaze function (transmission)
+        :return: blaze function (i.e. transmission at input wavelengths)
         :rtype: :class:`numpy.ndarray`
         """
 
@@ -1373,7 +1395,7 @@ class Grism(object):
         - *m*: dispersion order
 
         :param int order: dispersion order
-        :return: Null deviation wavelength [m]
+        :return: null deviation wavelength [m]
         :raise RuntimeError: if not converging
         """
 
@@ -1402,7 +1424,7 @@ class Detector(object):
         """
         Initialization from optical configuration dictionary.
 
-        :param dict config: optical configuration
+        :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
         """
 
@@ -1414,7 +1436,7 @@ class Detector(object):
     @property
     def dxdy(self):
         """
-        Expose complex offset dx + 1j*dy [m].
+        Expose complex offset `dx + 1j*dy` [m].
         """
 
         return complex(self.dx, self.dy)
@@ -1700,7 +1722,7 @@ class Spectrograph(object):
                 assert N.isclose(source.coords, fposition), \
                     "Backward modeling does not match"
 
-    def simulate(self, simcfg):
+    def simulate(self, simcfg, **kwargs):
         """
         Simulate detector spectra.
 
@@ -1708,6 +1730,11 @@ class Spectrograph(object):
         :return: simulated spectra
         :rtype: :class:`DetectorPositions`
         """
+
+        # Update simulation configuration on-the-fly
+        if kwargs:
+            simcfg = SimConfig(simcfg)
+            simcfg.update(kwargs)
 
         # Input coordinates
         coords = simcfg.get_coords()           # 1D complex array
@@ -1775,7 +1802,16 @@ class Spectrograph(object):
         Adjust optical parameters *optparam* to match target *detector*
         positions, using simulation configuration *simcfg*.
 
-        .. Warning:: adjustment of the 1st-order only.
+        :param DetectorPositions detector: target positions
+        :param SimConfig simcfg: simulation configuration
+        :param list optparams: optical parameters to be adjusted
+        :param float tol: optimization tolerance
+        :return: result from the optimization
+        :rtype : :class:`scipy.optimize.OptimizeResult`
+        :raise KeyError: unknown optical parameter
+
+        .. Warning:: only adjustment on 1st-order positions is currently
+           implemented.
         """
 
         import scipy.optimize as SO
@@ -1866,8 +1902,14 @@ def str_direction(direction):
 
 
 def dump_mpl3d(ax, filename):
+    """
+    Dump single-axis figure to D3.js html-file.
 
-    import mpld3
+    .. Note:: Bokeh-0.9 does not support matplotlib scatter, and is therefore
+       of limited use here.
+    """
+
+    import mpld3                # Raise ImportError if needed
 
     # Remove legend title if any (https://github.com/jakevdp/mpld3/issues/275)
     leg = ax.get_legend()
@@ -1876,11 +1918,13 @@ def dump_mpl3d(ax, filename):
         if txt == 'None':
             leg.set_title("")
 
+    # Add mouse position
     mpld3.plugins.connect(ax.figure,
                           mpld3.plugins.MousePosition(fontsize='small'))
+    # Save figure to HTML
     mpld3.save_html(ax.figure, filename,
                     no_extras=False, template_type='simple')
-    print("MPLD3 figure saved in", filename)
+    print("MPL-D3 figure saved in", filename)
 
 
 # Simulations ==============================
@@ -1923,7 +1967,7 @@ if __name__ == '__main__':
 
     ax = plot_SNIFS_R(test=True)
 
-    embed_html = True
+    embed_html = False
     if embed_html:
         try:
             dump_mpl3d(ax, 'SNIFS-R.html')
