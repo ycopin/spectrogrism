@@ -110,19 +110,6 @@ Positions and directions
 * A 3D-direction is encoded by the coordinates of the unit-vector :math:`(x, y,
   z)`.
 
-References
-----------
-
-* :download:`SNIFS optical parametrization <SNFactory-SNIFS-02-002.pdf>`
-  (SNfactory Technical Documentation)
-* :download:`Redefinition of the blue grating <SNFactory-SNIFS-02-004.pdf>`
-  (SNfactory Technical Documentation)
-* `Euclid Mission Database <http://euclid.esac.esa.int/epdb/>`_
-
-.. [Copin00] `2000PhDT.........6C
-             <https://tel.archives-ouvertes.fr/tel-00001338/fr/>`_
-.. [Lantz04] `2004SPIE.5249..146L
-             <http://adsabs.harvard.edu/abs/2004SPIE.5249..146L>`_
 
 Near Infrared Spectrometer and Photometer (NISP)
 ================================================
@@ -139,11 +126,11 @@ J. Zoubian).
 
    <p class="caption">
      <span class="caption-text">
-       <strong>Figure:</strong> Zemax sky-to-detector 1st-order simulation of
+       <strong>Figure:</strong> Zemax sky-to-detector multi-order simulation of
        17×17 sources in the detector plane at 13 individual wavelengths
-       (<em>outlined symbols</em>) and minimally-adjusted optical model using
-       nominal NISP parameters (<em>large symbols</em>), along with 0th- and 
-       2nd-order predictions.
+       (<em>outlined symbols</em>) and minimally 1st-order-adjusted optical
+       model using nominal NISP parameters (<em>filled symbols</em>), along
+       with associated 0th- and 2nd-order predictions.
      </span>
    </p>
 
@@ -152,12 +139,12 @@ J. Zoubian).
    \begin{figure}[htbp]
      \centering
      \includegraphics{run_190315_fit}
-     \caption{\textbf{Figure:} Zemax sky-to-detector 1st-order
-       simulation of 17×17 sources in the detector plane at 13
-       individual wavelengths (\emph{outlines symbols}) and
-       minimally-adjusted optical model using nominal NISP parameters
-       (\emph{large symbols}), along with 0th- and 
+     \caption{\textbf{Figure:} Zemax sky-to-detector multi-order simulation of
+       17×17 sources in the detector plane at 13 individual wavelengths
+       (\emph{outlines symbols}) and minimally-adjusted optical model using
+       nominal NISP parameters (\emph{large symbols}), along with 0th- and
        2nd-order predictions.}
+
    \end{figure}
 
 .. .. figure:: run_190315_fit.*
@@ -174,6 +161,21 @@ J. Zoubian).
      corresponding to (+0.7, -4.2) mm for centered y-coordinates
    * input position (+0.4, +1.25) is missing the 1.85 µm wavelength
 
+References
+==========
+
+* :download:`SNIFS optical parametrization <SNFactory-SNIFS-02-002.pdf>`
+  (SNfactory Technical Documentation)
+* :download:`Redefinition of the blue grating <SNFactory-SNIFS-02-004.pdf>`
+  (SNfactory Technical Documentation)
+* `Euclid Mission Database <http://euclid.esac.esa.int/epdb/>`_
+* *NISP Technical Description* (EUCL-LAM-OTH-7-001)
+
+.. [Copin00] `2000PhDT.........6C
+             <https://tel.archives-ouvertes.fr/tel-00001338/fr/>`_
+.. [Lantz04] `2004SPIE.5249..146L
+             <http://adsabs.harvard.edu/abs/2004SPIE.5249..146L>`_
+
 Code documentation
 ==================
 
@@ -184,7 +186,7 @@ Code documentation
    nisp
 
 Indices and tables
-==================
+------------------
 
 * :ref:`genindex`
 

@@ -24,6 +24,8 @@ spectrogrism
    Grism
    Detector
    Spectrograph
+
+.. inheritance-diagram:: spectrogrism
 """
 
 from __future__ import division, print_function
@@ -58,40 +60,40 @@ RAD2SEC = RAD2MIN * 60          #: Convert from radians to arc seconds
 
 #: SNIFS optical configuration, R-channel
 SNIFS_R = dict(
-    name="SNIFS-R",                   # Configuration name
-    wave_ref=0.76e-6,                 # Reference wavelength [m]
-    wave_range=[0.5e-6, 1.02e-6],     # Standard wavelength range [m]
+    name="SNIFS-R",                     # Configuration name
+    wave_ref=0.76e-6,                   # Reference wavelength [m]
+    wave_range=[0.5e-6, 1.02e-6],       # Standard wavelength range [m]
     # Telescope
-    telescope_flength=22.5,           # Focal length [m]
+    telescope_flength=22.5,             # Focal length [m]
     # Collimator
-    collimator_flength=169.549e-3,    # Focal length [m]
-    collimator_distortion=+2.141,     # r² distortion coefficient
+    collimator_flength=169.549e-3,      # Focal length [m]
+    collimator_distortion=+2.141,       # r² distortion coefficient
     collimator_lcolor_coeffs=[-4.39879e-6, 8.91241e-10, -1.82941e-13],
     # Grism
-    grism_on=True,                    # Is prism on the way?
-    grism_prism_material='BK7',       # Prism glass
-    grism_prism_angle=17.28/RAD2DEG,  # Prism angle [rad]
-    grism_grating_rho=200.,           # Grating groove density [lines/mm]
-    grism_dispersion=2.86,            # Informative spectral dispersion [AA/px]
-    grism_grating_material='EPR',     # Grating resine
-    grism_grating_blaze=15./RAD2DEG,  # Blaze angle [rad]
+    grism_on=True,                      # Is prism on the way?
+    grism_prism_material='BK7',         # Prism glass
+    grism_prism_angle=17.28 / RAD2DEG,  # Prism angle [rad]
+    grism_grating_rho=200.,             # Grating groove density [lines/mm]
+    grism_dispersion=2.86,              # Informative spectral dispersion [AA/px]
+    grism_grating_material='EPR',       # Grating resine
+    grism_grating_blaze=15. / RAD2DEG,  # Blaze angle [rad]
     # Camera
-    camera_flength=228.014e-3,        # Focal length [m]
-    camera_distortion=-0.276,         # r² distortion coefficient
+    camera_flength=228.014e-3,          # Focal length [m]
+    camera_distortion=-0.276,           # r² distortion coefficient
     camera_lcolor_coeffs=[+2.66486e-6, -5.52303e-10, 1.1365e-13],
     # Detector
-    detector_pxsize=15e-6,            # Detector pixel size [m]
-    detector_angle=0/RAD2DEG,         # Rotation of the detector (0=blue is up)
+    detector_pxsize=15e-6,              # Detector pixel size [m]
+    detector_angle=0. / RAD2DEG,        # Rotation of the detector (0=blue is up)
 )
 
 #: SNIFS simulation configuration
 SNIFS_SIMU = dict(
-    name=u"standard",                 # Configuration name
-    wave_npx=10,                      # Nb of pixels per spectrum
-    orders=range(-1, 3),              # Dispersion orders
+    name=u"standard",                   # Configuration name
+    wave_npx=10,                        # Nb of pixels per spectrum
+    orders=range(-1, 3),                # Dispersion orders
     # Focal plane sampling
     input_coords=N.linspace(-1e-2, 1e-2, 5),  # [m]
-    input_angle=-10/RAD2DEG,          # Rotation of the focal plane
+    input_angle=-10. / RAD2DEG,         # Rotation of the focal plane
 )
 
 # Technical Classes ==========================================
@@ -174,7 +176,7 @@ class OptConfig(Configuration):
     @property
     def wref(self):
 
-        return self.get('wave_ref', sum(self['wave_range'])/2.)
+        return self.get('wave_ref', 0.5 * sum(self['wave_range']))
 
 
 class SimConfig(Configuration):
@@ -386,7 +388,7 @@ class DetectorPositions(object):
        assert_compatibility
     """
 
-    markers = {0: '.', 1: 'o', 2: 's'}
+    markers = {0: 'D', 1: 'o', 2: 's'}
 
     def __init__(self, wavelengths, spectrograph=None, name='default'):
         """
@@ -492,9 +494,9 @@ class DetectorPositions(object):
 
             if blaze and self.spectrograph:
                 bztrans = self.spectrograph.grism.blaze_function(lbda, order)
-                s = kwcopy.pop('s', N.maximum(20 * N.sqrt(bztrans), 5))
+                s = kwcopy.pop('s', N.maximum(40 * N.sqrt(bztrans), 10))
             else:
-                s = kwcopy.pop('s', 20)
+                s = kwcopy.pop('s', 40)
 
             if coords is None:                    # Plot all spectra
                 coords = self.get_coords(order=order)
@@ -519,7 +521,7 @@ class DetectorPositions(object):
 
                 kwcopy.pop('label', None)  # Label only for one source
 
-            kwargs.pop('label', None)      # Label only for one order
+            #kwargs.pop('label', None)      # Label only for one order
 
         if fig:
             fig.colorbar(sc, label=u"Wavelength [µm]")
@@ -544,6 +546,26 @@ class DetectorPositions(object):
         assert N.allclose(self.get_coords(order), other.get_coords(order)), \
             "{!r} and {!r} have incompatible input coordinates".format(
                 self.name, other.name)
+
+    def compute_rms(self, other, order=1):
+        """
+        Compute total RMS distance to *other* :class:`DetectorPositions` instance.
+
+        :param DetectorPositions other: other instance to be tested
+        :param int order: dispersion order to be tested
+        :return: RMS [m]
+        :rtype: float
+        :raise AssertionError: incompatible instance
+        :raise KeyError: requested order cannot be found
+        """
+
+        self.assert_compatibility(other, order=order)
+
+        # Dataframe of position offsets for requested order
+        dpos = other.spectra[order] - self.spectra[order]
+        rms = (dpos.abs() ** 2).values.mean() ** 0.5
+
+        return rms
 
 
 class LateralColor(object):
@@ -613,7 +635,7 @@ class Material(object):
     """
 
     #: Sellmeier coefficients [B1, B2, B3, C1, C2, C3] of known materials.
-    materials =  dict(
+    materials = dict(
         # Glasses
         BK7=[ 1.03961212,    2.31792344e-1, 1.01046945,
               6.00069867e-3, 2.00179144e-2, 1.03560653e+2],
@@ -674,7 +696,7 @@ class Material(object):
         lmu2 = (wavelengths / 1e-6)**2          # (wavelength [µm])**2
         n2m1 = N.sum([ b / (1 - c / lmu2)       # n**2 - 1
                        for b, c in zip(self.coeffs[:3], self.coeffs[3:]) ],
-                       axis=0)
+                     axis=0)
 
         return N.sqrt(n2m1 + 1)
 
@@ -751,7 +773,7 @@ class CameraOrCollimator(object):
         :return: 2D-position
         """
 
-        return r * N.exp(1j*phi)
+        return r * N.exp(1j * phi)
 
     @staticmethod
     def invert_camcoll(y, e, b):
@@ -770,9 +792,9 @@ class CameraOrCollimator(object):
         elif b == 0 and e == 0:
             return N.nan
         elif b == 0:
-            return (y/e)**(1/3)
+            return (y / e) ** (1 / 3)
         elif e == 0:
-            return y/b
+            return y / b
 
         poly = N.poly1d([e, 0, b, -y])
         roots = poly.r
@@ -849,7 +871,7 @@ class Collimator(CameraOrCollimator):
 
         r, phi = self.rect2pol(position)  # Modulus [m] and phase [rad]
         rr = r / self.flength             # Normalized radius
-        tmp = (self.distortion * rr**2 +
+        tmp = (self.distortion * rr ** 2 +
                self.lcolor.amplitude(wavelengths) / gamma)
         tantheta = rr * (1 + tmp)
 
@@ -866,7 +888,7 @@ class Collimator(CameraOrCollimator):
 
         rovf = self.invert_camcoll(tantheta,
                                    self.distortion,
-                                   1 + self.lcolor.amplitude(wavelength)/gamma)
+                                   1 + self.lcolor.amplitude(wavelength) / gamma)
 
         return self.pol2rect(rovf * self.flength, phi + N.pi)  # Position
 
@@ -930,10 +952,10 @@ class Camera(CameraOrCollimator):
         """
 
         tantheta, phi = self.rect2pol(direction)
-        rovf = (1 + self.distortion * tantheta**2 +
+        rovf = (1 + self.distortion * tantheta ** 2 +
                 self.lcolor.amplitude(wavelengths)) * tantheta
 
-        return self.pol2rect(rovf*self.flength, phi + N.pi)  # Flipped position
+        return self.pol2rect(rovf * self.flength, phi + N.pi)  # Flipped position
 
     def backward(self, position, wavelength):
         """
@@ -944,7 +966,7 @@ class Camera(CameraOrCollimator):
 
         r, phi = self.rect2pol(position)  # Modulus [m] and phase [rad]
 
-        tantheta = self.invert_camcoll(r/self.flength,
+        tantheta = self.invert_camcoll(r / self.flength,
                                        self.distortion,
                                        1 + self.lcolor.amplitude(wavelength))
 
@@ -1023,7 +1045,7 @@ class Prism(object):
         tilts = ','.join( "{:+.0f}'".format(t * RAD2MIN) for t in self.tilts )
 
         return "Prism [{}]: A={:.2f}°, tilts={}".format(
-            self.material.name, self.angle*RAD2DEG, tilts)
+            self.material.name, self.angle * RAD2DEG, tilts)
 
     @staticmethod
     def rotation(x, y, theta):
@@ -1032,7 +1054,7 @@ class Prism(object):
         """
 
         # Rotation in the complex plane
-        p = (N.array(x) + 1j*N.array(y)) * N.exp(1j*theta)
+        p = (N.array(x) + 1j * N.array(y)) * N.exp(1j * theta)
 
         return (p.real, p.imag)
 
@@ -1074,9 +1096,9 @@ class Prism(object):
         """
 
         x1, y1, z1 = xyz
-        x2 = x1 * n1/n2
-        y2 = y1 * n1/n2
-        z2 = N.sqrt(1 - (x2**2 + y2**2))
+        x2 = x1 * n1 / n2
+        y2 = y1 * n1 / n2
+        z2 = N.sqrt(1 - (x2 ** 2 + y2 ** 2))
 
         return N.vstack((x2, y2, z2)).squeeze()
 
@@ -1112,7 +1134,7 @@ class Grating(object):
     def __str__(self):
 
         return "Grating [{}]: rho={:.1f} g/mm, blaze={:.2f}°".format(
-            self.material.name, self.rho, self.blaze*RAD2DEG)
+            self.material.name, self.rho, self.blaze * RAD2DEG)
 
     def forward(self, xyz, wavelengths, order=1):
         """
@@ -1132,7 +1154,7 @@ class Grating(object):
         x, y, z = xyz
         xp = x * n
         yp = y * n + order * wavelengths * self.rho / 1e-3
-        zp = N.sqrt(1 - (xp**2 + yp**2))
+        zp = N.sqrt(1 - (xp ** 2 + yp ** 2))
 
         return N.vstack((xp, yp, zp)).squeeze()
 
@@ -1154,7 +1176,7 @@ class Grating(object):
         xp, yp, zp = xyz
         x = xp / n
         y = (yp - order * wavelength * self.rho / 1e-3) / n
-        z = N.sqrt(1 - (x**2 + y**2))
+        z = N.sqrt(1 - (x ** 2 + y ** 2))
 
         return N.vstack((x, y, z)).squeeze()
 
@@ -1253,8 +1275,8 @@ class Grism(object):
         r = N.arcsin(npsinA - order * rholbda) - self.grating.blaze  # [rad]
 
         theta = (N.pi / rholbda * N.cos(self.grating.blaze) *
-                 (ng*N.sin(i) - N.sin(r)))
-        bf = (N.sin(theta)/theta)**2
+                 (ng * N.sin(i) - N.sin(r)))
+        bf = (N.sin(theta) / theta) ** 2
 
         return bf
 
@@ -1269,12 +1291,12 @@ class Grism(object):
         """
 
         tantheta, phi = CameraOrCollimator.rect2pol(direction)
-        tan2 = tantheta**2
-        costheta = N.sqrt(1/(1 + tan2))
-        sintheta = N.sqrt(tan2/(1 + tan2))
+        tan2 = tantheta ** 2
+        costheta = N.sqrt(1 / (1 + tan2))
+        sintheta = N.sqrt(tan2 / (1 + tan2))
 
-        return N.vstack((N.cos(phi)*sintheta,
-                         N.sin(phi)*sintheta,
+        return N.vstack((N.cos(phi) * sintheta,
+                         N.sin(phi) * sintheta,
                          costheta)).squeeze()
 
     @staticmethod
@@ -1401,7 +1423,7 @@ class Grism(object):
 
         import scipy.optimize as SO
 
-        k = N.sin(self.prism.angle)/(order * self.grating.rho / 1e-3)
+        k = N.sin(self.prism.angle) / (order * self.grating.rho / 1e-3)
         f = lambda l: l - k * (self.prism.material.index(l) - 1)
 
         lbda0 = SO.newton(f, 1e-6)  # Look around 1 µm
@@ -1557,10 +1579,10 @@ class Spectrograph(object):
 
             return N.tan(N.arcsin(sinbeta))
 
-        dydl = (derivative(yoverf, wavelength, dx=wavelength*eps) *
+        dydl = (derivative(yoverf, wavelength, dx=wavelength * eps) *
                 self.camera.flength)
 
-        return 1/dydl
+        return 1 / dydl
 
     def forward(self, source, order=1):
         """
@@ -1655,20 +1677,20 @@ class Spectrograph(object):
             # Telescope
             fpositions = self.telescope.forward(source.coords, wavelengths)
             if verbose:
-                print("Positions (tel, forward) [×1e6]:", fpositions*1e6)
+                print("Positions (tel, forward) [×1e6]:", fpositions * 1e6)
         else:
             fpositions = source.coords
         # Collimator
         fdirections = self.collimator.forward(fpositions,
                                               wavelengths, self.gamma)
         if verbose:
-            print("Directions (coll, forward) [×1e6]:", fdirections*1e6)
+            print("Directions (coll, forward) [×1e6]:", fdirections * 1e6)
         if self.grism_on:
             # Grism
             fdirections = self.grism.forward(fdirections,
                                              wavelengths, order=order)
             if verbose:
-                print("Directions (grism, forward) [×1e6]:", fdirections*1e6)
+                print("Directions (grism, forward) [×1e6]:", fdirections * 1e6)
         # Camera
         dpositions = self.camera.forward(fdirections, wavelengths)
         if verbose:
@@ -1691,13 +1713,13 @@ class Spectrograph(object):
             # Camera
             bdirection = self.camera.backward(dpos, lbda)
             if verbose:
-                print("Direction (camera, backward) [×1e6]:", bdirection*1e6)
+                print("Direction (camera, backward) [×1e6]:", bdirection * 1e6)
             if self.grism_on:
                 # Grism
                 bdirection = self.grism.backward(bdirection, lbda, order=order)
                 if verbose:
                     print("Direction (grism, backward) [×1e6]:",
-                          bdirection*1e6)
+                          bdirection * 1e6)
             # Collimator
             fposition = self.collimator.backward(bdirection,
                                                  lbda, self.gamma)
@@ -1705,10 +1727,12 @@ class Spectrograph(object):
                 # Telescope
                 tdirection = self.telescope.backward(fposition, lbda)
                 if verbose:
-                    print("Position (coll, backward) [×1e6]:", fposition*1e6)
-                    print("Direction (tel, backward) [×1e6]:", tdirection*1e6)
+                    print("Position (coll, backward) [×1e6]:",
+                          fposition * 1e6)
+                    print("Direction (tel, backward) [×1e6]:",
+                          tdirection * 1e6)
                     print("Input direction (reminder) [×1e6]:",
-                          source.coords*1e6)
+                          source.coords * 1e6)
 
                 assert N.isclose(source.coords, tdirection), \
                     "Backward modeling does not match"
@@ -1807,7 +1831,7 @@ class Spectrograph(object):
         :param list optparams: optical parameters to be adjusted
         :param float tol: optimization tolerance
         :return: result from the optimization
-        :rtype : :class:`scipy.optimize.OptimizeResult`
+        :rtype: :class:`scipy.optimize.OptimizeResult`
         :raise KeyError: unknown optical parameter
 
         .. Warning:: only adjustment on 1st-order positions is currently
@@ -1838,7 +1862,7 @@ class Spectrograph(object):
         detdf = detector.spectra[1]
 
         # Compute initial RMS
-        dtot = ((simu.spectra[1] - detdf).abs()**2).values.sum()
+        dtot = ((simu.spectra[1] - detdf).abs() ** 2).values.sum()
         rms = (dtot / detdf.size) ** 0.5  # [m]
         print("  RMS: {} mm = {} px".format(
             rms / 1e-3, rms / self.detector.pxsize))
@@ -1851,7 +1875,7 @@ class Spectrograph(object):
             # Position (complex) offsets (1st-order)
             dpos = simu.spectra[1] - detector_frame  # [m]
             # Total distance
-            dtot = (dpos.abs()**2).values.sum()      # [m²]
+            dtot = (dpos.abs() ** 2).values.sum()    # [m²]
 
             return dtot
 

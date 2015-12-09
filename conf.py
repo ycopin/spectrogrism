@@ -33,10 +33,11 @@ extensions = [
     'sphinx.ext.doctest',
     'sphinx.ext.intersphinx',
     'sphinx.ext.todo',
-    'sphinx.ext.coverage',
+    #'sphinx.ext.coverage',
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
     'sphinx.ext.autosummary',
+    'sphinx.ext.inheritance_diagram',
 ]
 
 # Autodoc configuration
@@ -70,7 +71,7 @@ intersphinx_mapping = {
     'numpy': ('http://docs.scipy.org/doc/numpy/', None),
     'scipy': ('http://docs.scipy.org/doc/scipy/reference/', None),
     'matplotlib': ('http://matplotlib.org/', None),
-    'pandas': ('http://pandas.pydata.org/pandas-docs/dev', None),
+    'pandas': ('http://pandas-docs.github.io/pandas-docs-travis/', None),
     }
 
 # Add any paths that contain templates here, relative to this directory.
@@ -94,7 +95,7 @@ copyright = u'2015, Yannick Copin'
 # built documents.
 #
 # The short X.Y version.
-version = '0.2'
+version = '0.3'
 # The full version, including alpha/beta/rc tags.
 release = version
 
