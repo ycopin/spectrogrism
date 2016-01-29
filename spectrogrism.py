@@ -449,6 +449,8 @@ class DetectorPositions(object):
         :param list orders: selection of dispersion orders to be plotted
         :param bool blaze: encode the blaze function in the marker size
         :param int subsampling: sub-sample coordinates and wavelengths
+        :param **kwargs: options propagated to
+                         :method:`matplotlib.pyplot.Axes.scatter`
         :return: :class:`matplotlib.pyplot.Axes`
         """
 
@@ -491,6 +493,8 @@ class DetectorPositions(object):
             kwcopy = kwargs.copy()
             marker = kwcopy.pop('marker',
                                 self.markers.get(abs(order), 'o'))
+            if len(orders) > 1:           # Append order to label
+                kwcopy['label'] += " #{}".format(order)
 
             if blaze and self.spectrograph:
                 bztrans = self.spectrograph.grism.blaze_function(lbda, order)
@@ -498,13 +502,15 @@ class DetectorPositions(object):
             else:
                 s = kwcopy.pop('s', 40)
 
-            if coords is None:                    # Plot all spectra
-                coords = self.get_coords(order=order)
+            if coords is None:            # Plot all spectra
+                xys = self.get_coords(order=order)
+            else:
+                xys = coords              # Plot specific spectra
 
             if subsampling:
-                coords = coords[::subsampling]
+                xys = xys[::subsampling]
 
-            for xy in coords:                     # Loop over sources
+            for xy in xys:                # Loop over sources
                 try:
                     positions = df[xy].values / 1e-3  # Complex positions [mm]
                 except KeyError:
@@ -549,7 +555,8 @@ class DetectorPositions(object):
 
     def compute_rms(self, other, order=1):
         """
-        Compute total RMS distance to *other* :class:`DetectorPositions` instance.
+        Compute total RMS distance to *other* :class:`DetectorPositions`
+        instance.
 
         :param DetectorPositions other: other instance to be tested
         :param int order: dispersion order to be tested
@@ -1925,7 +1932,7 @@ def str_direction(direction):
     return "{:+.1f} × {:+.1f} arcmin".format(z.real, z.imag)
 
 
-def dump_mpl3d(ax, filename):
+def dump_mpld3(ax, filename):
     """
     Dump single-axis figure to D3.js html-file.
 
@@ -1994,7 +2001,7 @@ if __name__ == '__main__':
     embed_html = False
     if embed_html:
         try:
-            dump_mpl3d(ax, 'SNIFS-R.html')
+            dump_mpld3(ax, 'SNIFS-R.html')
         except ImportError:
             warnings.warn("MPLD3 is not available, cannot export to HTML.")
 

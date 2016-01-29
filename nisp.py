@@ -14,6 +14,8 @@ from __future__ import division, print_function
 
 import os
 import warnings
+from collections import OrderedDict
+
 import numpy as N
 import matplotlib.pyplot as P
 
@@ -81,40 +83,71 @@ class Zemax(object):
     """
 
     colnames = """
-confNb wave xindeg yindeg ximgmm yimgmm pxsize xpuppx ypuppx
-nximgpx nyimgpx ximgpx yimgpx ximgmm yimgmm xpsfmm ypsfmm
+confNb wave xindeg yindeg ximgmm yimgmm pxsize nxpup nypup nximg nyimg
+ximgcpx yimgcpx ximgcmm yimgcmm xpsfcmm ypsfcmm
 ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
-    def __init__(self, filename, order=1):
-        """Initialize from *filename*."""
+    def __init__(self, simulations):
+        """Initialize from *simulations* = {simname: name, order: filename}."""
 
-        self.filename = os.path.basename(filename)
-        self.order = order
-        # Load dataset from filename
-        self.data = self.load(filename)
-        # Convert to DetectorPositions
-        self.detector = self.detector_positions(order=order)
+        self.filenames = simulations.copy()
+        self.name = self.filenames.pop('simname')  # Simulation name
+        # Orders (int) or undispersed bands (str)
+        self.orders = self.filenames.keys()
+        # Load datasets from filenames and minimally check consistency
+        # {order: ndarray}
+        self.data = self.load_multiorder_sims(self.filenames)
+        # Convert to DetectorPositions (internally structured in orders)
+        self.positions = self.detector_positions(orders=self.orders)
         # Load simulation configuration
-        self.simcfg = self.get_simcfg(orders=[order])
+        self.simcfg = self.get_simcfg(orders=self.orders)
 
     def __str__(self):
 
-        waves = set(self.data['wave'])
-        xin = set(self.data['xindeg'])
-        yin = set(self.data['yindeg'])
+        s = "Simulations: {}".format(self.name)
+        for order in self.orders:
+            s += "\n  Order #{}: {}".format(order, self.filenames[order])
 
-        s = """\
-{} (order #{}): {} entries
-  Wavelength: {} steps from {:.2f} to {:.2f} µm
-  Coords: {} × {} sources\
-""".format(self.filename, self.order, len(self.data),
-           len(waves), min(waves), max(waves),
-           len(xin), len(yin))
+        # All orders are supposed to share the same input values
+        ref_data = self.data[self.orders[0]]
+        waves = set(ref_data['wave'])
+        xin = set(ref_data['xindeg'])
+        yin = set(ref_data['yindeg'])
+
+        s += "\n  Wavelengths: {} steps from {:.2f} to {:.2f} µm".format(
+            len(waves), min(waves), max(waves))
+        s += "\n  Coords: {} × {} sources".format(
+            len(xin), len(yin))
 
         return s
 
-    def load(self, filename):
-        """Load simulation from *filename*."""
+    def load_multiorder_sims(self, simulations):
+        """Load multi-order simulations from
+        *simulations* = {order: filename}."""
+
+        data = { order: self.load_simulation(simulations[order])
+                 for order in self.orders }
+
+        # Consistency checks on configurations, wavelengths and input positions
+        if len(self.orders) > 1:
+            ref_order = self.orders[0]
+            for order in self.orders[1:]:
+                assert (data[order]['confNb'] ==
+                        data[ref_order]['confNb']).all(), \
+                    "ConfNb of orders {} and {} are incompatible".format(
+                        order, ref_order)
+                # Beware: all files are not sorted the same way
+                for name in ('wave', 'xindeg', 'yindeg'):
+                    vector = N.sort(N.unique(data[order][name]))
+                    ref_vector = N.sort(N.unique(data[ref_order][name]))
+                    assert N.allclose(vector, ref_vector), \
+                    "'{}' of orders {} and {} are incompatible".format(
+                        name, order, ref_order)
+
+        return data
+
+    def load_simulation(self, filename):
+        """Load simulation from single *filename*."""
 
         data = N.genfromtxt(filename, dtype=None, names=self.colnames)
 
@@ -132,47 +165,57 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
         return data
 
-    def get_simcfg(self, orders=[1]):
+    def get_simcfg(self, orders=None):
         """Generate a :class:`SimConfig` corresponding to simulation."""
 
+        if orders is None:
+            orders = self.orders
+
+        ref_data = self.data[orders[0]]
         # Unique wavelengths [m]
-        waves = N.unique(self.data['wave']) * 1e-6   # [m]
+        waves = N.unique(ref_data['wave']) * 1e-6   # [m]
         # Unique input coordinates
-        coords = N.unique(self.data['xindeg'] + 1j * self.data['yindeg'])
+        coords = N.unique(ref_data['xindeg'] + 1j * ref_data['yindeg'])
         # Convert back to [[x, y]]
         coords = N.vstack((coords.real, coords.imag)).T / S.RAD2DEG   # [rad]
 
-        simcfg = dict(name=self.filename,
-                      wave_npx=len(waves),
-                      wave_range=[min(waves), max(waves)],
-                      orders=orders,
-                      input_coords=coords)
+        simcfg = S.Configuration(dict(name=self.name,
+                            wave_npx=len(waves),
+                            wave_range=[min(waves), max(waves)],
+                            orders=orders,
+                            input_coords=coords))
 
         return S.SimConfig(simcfg)
 
-    def detector_positions(self, order=1):
-        """Convert simulation to :class:`DetectorPositions`."""
+    def detector_positions(self, orders=None, colname='psfcmm'):
+        """Convert simulation to :class:`DetectorPositions` in mm."""
 
-        waves = N.sort(N.unique(self.data['wave']))
-        coords = N.unique(
-            self.data['xindeg'] + 1j * self.data['yindeg'])  # [deg]
-        # print("{}: {} spectra of {} px".format(
-        #     self.filename, len(coords), len(waves)))
+        if orders is None:
+            orders = self.orders
 
-        detector = S.DetectorPositions(waves * 1e-6,   # Wavelengths in [m]
-                                       name="Sim #{} ({})".format(
-                                           self.order, self.filename))
-        for xy in coords:                  # Loop over input positions [deg]
-            select = (N.isclose(self.data['xindeg'], xy.real) &
-                      N.isclose(self.data['yindeg'], xy.imag))
-            subdata = self.data[select]                     # Data selection
-            subdata = subdata[N.argsort(subdata['wave'])]   # Sort subdata
-            # Sanity check
-            assert N.allclose(subdata['wave'], waves)
-            dpos = subdata['xpsfmm'] + 1j * subdata['ypsfmm']   # [mm]
-            detector.add_spectrum(xy / S.RAD2DEG, dpos * 1e-3, order=order)
+        if 'mm' not in colname:  # Input coords are supposed to be in mm
+            raise NotImplementedError()
 
-        return detector
+        ref_order = orders[0]
+        data = self.data[ref_order]
+        waves = N.sort(N.unique(data['wave']))
+        coords = N.unique(data['xindeg'] + 1j * data['yindeg'])  # [deg]
+
+        positions = S.DetectorPositions(waves * 1e-6,   # Wavelengths in [m]
+                                        name=self.name)
+        for order in orders:
+            data = self.data[order]
+            for xy in coords:                  # Loop over input positions [deg]
+                select = (N.isclose(data['xindeg'], xy.real) &
+                          N.isclose(data['yindeg'], xy.imag))
+                subdata = data[select]                         # Data selection
+                subdata = subdata[N.argsort(subdata['wave'])]  # Sort subdata
+                # Sanity check
+                assert N.allclose(subdata['wave'], waves)
+                dpos = subdata['x' + colname] + 1j * subdata['y' + colname]
+                positions.add_spectrum(xy / S.RAD2DEG, dpos * 1e-3, order=order)
+
+        return positions
 
     def plot_input(self, ax=None, **kwargs):
         """Plot input coordinates (degrees)."""
@@ -190,16 +233,17 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
         return ax
 
-    def plot_output(self, ax=None, **kwargs):
+    def plot_output(self, ax=None, orders=None, subsampling=0,
+                    **kwargs):
         """Plot output (detector) coordinates [mm]."""
 
-        ax = self.detector.plot(ax=ax,
-                                orders=kwargs.pop('orders', (1,)),
-                                blaze=kwargs.pop('blaze', False),
-                                subsampling=kwargs.pop('subsampling', 0),
-                                **kwargs)
+        if orders is None:
+            orders = self.orders
 
-        title = "PSF centroid"
+        ax = self.positions.plot(ax=ax, orders=orders, 
+                                 subsampling=subsampling, **kwargs)
+
+        title = "Simulation '{}'".format(self.name)
         if subsampling:
             title += u" (subsampled ×{})".format(subsampling)
         ax.set_title(title)
@@ -209,30 +253,24 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
 if __name__ == '__main__':
 
-    simnames = {1: "Zemax/run_190315.dat",
-                0: "Zemax/run_011115_conf2_o0.dat",
-                2: "Zemax/run_161115_conf2_o2.dat"}
+    simulations = OrderedDict([("simname", "Zemax"),
+                               (1, "Zemax/run_190315.dat"),
+                               (0, "Zemax/run_011115_conf2_o0.dat"),
+                               (2, "Zemax/run_161115_conf2_o2.dat"),
+                               ])
 
-    orders = (0, 1, 2)
     subsampling = 3             # Subsample output plot
     adjust = False              # Test optical parameter adjustment
-    embed_html = True           # Generate MPLD3 figure
+    embed_html = False          # Generate MPLD3 figure
 
     # 1st-order Zemax simulation
-    zmx = Zemax(simnames[1])
+    zmx = Zemax(simulations)
     print(zmx)
 
     # ax = zmx.plot_input()
 
     kwargs = dict(s=20, edgecolor='k', linewidths=1)  # Outlined symbols
-    ax = zmx.plot_output(subsampling=subsampling, orders=(1,), **kwargs)
-
-    if 0 in orders:
-        zmx0 = Zemax(simnames[0], order=0)  # 0th-order
-        zmx0.plot_output(ax=ax, subsampling=subsampling, orders=(0,), **kwargs)
-    if 2 in orders:
-        zmx2 = Zemax(simnames[2], order=2)  # 2nd-order
-        zmx2.plot_output(ax=ax, subsampling=subsampling, orders=(2,), **kwargs)
+    ax = zmx.plot_output(orders=zmx.orders, subsampling=subsampling, **kwargs)
 
     # Optical modeling
     optcfg = S.OptConfig(NISP_R)  # Optical configuration (default NISP)
@@ -252,10 +290,10 @@ if __name__ == '__main__':
         print("Spectrograph test: OK")
 
     # Simulation
-    simu = spectro.simulate(simcfg, orders=orders)
+    simu = spectro.simulate(simcfg, orders=zmx.orders)
 
     # Compute RMS on 1st-order positions
-    rms = zmx.detector.compute_rms(simu, order=1)
+    rms = zmx.positions.compute_rms(simu, order=1)
     print("1st-order RMS = {:.4f} mm = {:.2f} px".format(
         rms / 1e-3, rms / spectro.detector.pxsize))
 
@@ -268,9 +306,9 @@ if __name__ == '__main__':
                   label="{} #1 (RMS={:.1f} px)".format(
                       simu.name, rms / spectro.detector.pxsize),
                   **kwargs)
-        if 0 in orders:
+        if 0 in zmx.orders:
             # Compute RMS on 0th-order positions
-            rms = zmx0.detector.compute_rms(simu, order=0)
+            rms = zmx.positions.compute_rms(simu, order=0)
             print("0th-order RMS = {:.4f} mm = {:.2f} px".format(
                 rms / 1e-3, rms / spectro.detector.pxsize))
             simu.plot(ax=ax, zorder=0,  # Draw below Zemax
@@ -279,9 +317,9 @@ if __name__ == '__main__':
                       label="{} #0 (RMS={:.1f} px)".format(
                           simu.name, rms / spectro.detector.pxsize),
                       **kwargs)
-        if 2 in orders:
+        if 2 in zmx.orders:
             # Compute RMS on 2nd-order positions
-            rms = zmx2.detector.compute_rms(simu, order=2)
+            rms = zmx.positions.compute_rms(simu, order=2)
             print("2nd-order RMS = {:.4f} mm = {:.2f} px".format(
                 rms / 1e-3, rms / spectro.detector.pxsize))
             simu.plot(ax=ax, zorder=0,  # Draw below Zemax
@@ -292,7 +330,7 @@ if __name__ == '__main__':
                       **kwargs)
     else:                           # Optical adjustment
         result = spectro.adjust(
-            zmx.detector, simcfg, tol=1e-4,
+            zmx.positions, simcfg, tol=1e-4,
             optparams=[
                 'detector_dx', 'detector_dy',
                 # 'telescope_flength',
@@ -314,7 +352,7 @@ if __name__ == '__main__':
 
     if embed_html:
         try:
-            S.dump_mpl3d(ax, zmx.filename.replace('.dat', '.html'))
+            S.dump_mpld3(ax, zmx.filename.replace('.dat', '.html'))
         except ImportError:
             warnings.warn("MPLD3 is not available, cannot export to HTML.")
 
