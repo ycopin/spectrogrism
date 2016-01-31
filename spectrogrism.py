@@ -5,6 +5,8 @@
 spectrogrism
 ------------
 
+Generic utilities for modeling grism-based spectrograph.
+
 .. autosummary::
 
    Configuration
@@ -31,11 +33,12 @@ spectrogrism
 from __future__ import division, print_function
 
 __author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
-__version__ = "0.1"
+__version__ = "0.4"
 __docformat__ = 'restructuredtext en'
 
 
 import warnings
+from collections import OrderedDict
 
 import numpy as N
 import pandas as PD
@@ -59,50 +62,49 @@ RAD2MIN = RAD2DEG * 60          #: Convert from radians to arc minutes
 RAD2SEC = RAD2MIN * 60          #: Convert from radians to arc seconds
 
 #: SNIFS optical configuration, R-channel
-SNIFS_R = dict(
-    name="SNIFS-R",                     # Configuration name
-    wave_ref=0.76e-6,                   # Reference wavelength [m]
-    wave_range=[0.5e-6, 1.02e-6],       # Standard wavelength range [m]
+SNIFS_R = OrderedDict([
+    ('name', "SNIFS-R"),                # Configuration name
+    ('wave_ref', 0.76e-6),              # Reference wavelength [m]
+    ('wave_range', [0.5e-6, 1.02e-6]),  # Standard wavelength range [m]
     # Telescope
-    telescope_flength=22.5,             # Focal length [m]
+    ('telescope_flength', 22.5),        # Focal length [m]
     # Collimator
-    collimator_flength=169.549e-3,      # Focal length [m]
-    collimator_distortion=+2.141,       # r² distortion coefficient
-    collimator_lcolor_coeffs=[-4.39879e-6, 8.91241e-10, -1.82941e-13],
+    ('collimator_flength', 169.549e-3),    # Focal length [m]
+    ('collimator_distortion', +2.141),     # r² distortion coefficient
+    ('collimator_lcolor_coeffs', [-4.39879e-6, 8.91241e-10, -1.82941e-13]),
     # Grism
-    grism_on=True,                      # Is prism on the way?
-    grism_prism_material='BK7',         # Prism glass
-    grism_prism_angle=17.28 / RAD2DEG,  # Prism angle [rad]
-    grism_grating_rho=200.,             # Grating groove density [lines/mm]
-    grism_dispersion=2.86,              # Informative spectral dispersion [AA/px]
-    grism_grating_material='EPR',       # Grating resine
-    grism_grating_blaze=15. / RAD2DEG,  # Blaze angle [rad]
+    ('grism_on', True),                      # Is prism on the way?
+    ('grism_prism_material', 'BK7'),         # Prism glass
+    ('grism_prism_angle', 17.28 / RAD2DEG),  # Prism angle [rad]
+    ('grism_grating_rho', 200.),   # Grating groove density [lines/mm]
+    ('grism_dispersion', 2.86),    # Informative spectral dispersion [AA/px]
+    ('grism_grating_material', 'EPR'),       # Grating resine
+    ('grism_grating_blaze', 15. / RAD2DEG),  # Blaze angle [rad]
     # Camera
-    camera_flength=228.014e-3,          # Focal length [m]
-    camera_distortion=-0.276,           # r² distortion coefficient
-    camera_lcolor_coeffs=[+2.66486e-6, -5.52303e-10, 1.1365e-13],
+    ('camera_flength', 228.014e-3),          # Focal length [m]
+    ('camera_distortion', -0.276),           # r² distortion coefficient
+    ('camera_lcolor_coeffs', [+2.66486e-6, -5.52303e-10, 1.1365e-13]),
     # Detector
-    detector_pxsize=15e-6,              # Detector pixel size [m]
-    detector_angle=0. / RAD2DEG,        # Rotation of the detector (0=blue is up)
-)
+    ('detector_pxsize', 15e-6),        # Detector pixel size [m]
+    ('detector_angle', 0. / RAD2DEG),  # Rotation of the detector (0=blue is up)
+    ])
 
 #: SNIFS simulation configuration
-SNIFS_SIMU = dict(
-    name=u"standard",                   # Configuration name
-    wave_npx=10,                        # Nb of pixels per spectrum
-    orders=range(-1, 3),                # Dispersion orders
+SNIFS_SIMU = OrderedDict([
+    ('name', u"standard"),                 # Configuration name
+    ('wave_npx', 10),                      # Nb of pixels per spectrum
+    ('orders', range(-1, 3)),              # Dispersion orders
     # Focal plane sampling
-    input_coords=N.linspace(-1e-2, 1e-2, 5),  # [m]
-    input_angle=-10. / RAD2DEG,         # Rotation of the focal plane
-)
+    ('input_coords', N.linspace(-1e-2, 1e-2, 5)),  # [m]
+    ('input_angle', -10. / RAD2DEG),       # Rotation of the focal plane
+    ])
 
 # Technical Classes ==========================================
 
-
-class Configuration(dict):
+class Configuration(OrderedDict):
 
     """
-    A simple dict-like configuration.
+    A simple dict-derived configuration.
 
     .. autosummary::
 
@@ -112,22 +114,23 @@ class Configuration(dict):
     """
 
     conftype = 'Configuration'            #: Configuration type
-
+    
     def __init__(self, adict={}):
+        """Initialize from dictionary `adict`."""
 
-        dict.__init__(self, adict)
-        self.name = self.pop('name', 'default')
+        OrderedDict.__init__(self, adict)
+        self.name = self.get('name', 'default')
 
     def __str__(self):
 
         s = [" {} {!r} ".format(self.conftype, self.name).center(70, '-')]
-        s += [ '  {:10s}: {}'.format(key, self[key])
-               for key in sorted(self.keys()) ]
+        s += [ '  {:20s}: {}'.format(key, self[key])
+               for key in self.keys() ]
 
         return '\n'.join(s)
 
     def override(self, adict):
-        """Override configuration from dictionary."""
+        """Override configuration from dictionary `adict`."""
 
         # warnings.warn(
         #     "Overriding configuration {!r} with test values {}".format(
@@ -140,25 +143,24 @@ class Configuration(dict):
         self.update(adict)
 
     def save(self, yamlname):
-        """Save configuration to YAML file."""
+        """Save configuration to YAML file `yamlname`."""
 
         import yaml
 
         with open(yamlname, 'w') as yamlfile:
-            yaml.dump(dict(self, name=self.name), yamlfile)
+            yaml.dump(self, yamlfile)
 
         print("Configuration {!r} saved in {!r}".format(self.name, yamlname))
 
     @classmethod
     def load(cls, yamlname):
-        """Load configuration from YAML file."""
+        """Load configuration from YAML file `yamlname`."""
 
         import yaml
 
         with open(yamlname, 'r') as yamlfile:
-            adict = yaml.load(yamlfile)
+            self = yaml.load(yamlfile)
 
-        self = cls(adict)
         print("Configuration {!r} loaded from {!r}".format(
             self.name, yamlname))
 
@@ -237,7 +239,7 @@ class Spectrum(object):
 
     def __init__(self, wavelengths, fluxes, name='spectrum'):
         """
-        Initialize from wavelength and flux arrays.
+        Initialize from `wavelengths` and `fluxes` arrays.
 
         :param numpy.ndarray wavelengths: input wavelengths [m]
         :param numpy.ndarray fluxes: input fluxes [arbitrary units]
@@ -281,7 +283,8 @@ class Spectrum(object):
 class Coordinates2D(complex):
 
     """
-    A 2D-coordinate system, for linear positions or angular directions.
+    A complex-derived 2D-coordinate system, for linear positions or
+    angular directions.
 
     .. autosummary::
 
@@ -336,14 +339,16 @@ class Position2D(Coordinates2D):
 class PointSource(object):
 
     """
-    A :class:`Spectrum` associated to a 2D-position or direction.
+    A :class:`Spectrum` associated to a :class:`Position2D` or
+    :class:`Direction2D`.
     """
 
     def __init__(self, coords, spectrum=None, **kwargs):
         """
-        Initialize from position/direction and spectrum.
+        Initialize from position/direction `coords` and `spectrum`.
 
-        :param complex coords: source 2D-position [m] or direction [rad]
+        :param complex coords: source :class:`Position2D` [m] or
+                               :class:`Direction2D` [rad]
         :param Spectrum spectrum: source spectrum (default to standard spectrum)
         :param kwargs: propagated to :func:`Spectrum.default()` constructor
         """
@@ -366,7 +371,7 @@ class PointSource(object):
 class DetectorPositions(object):
 
     """
-    A container for positions on the detector.
+    A container for :class:`Position2D` on the detector.
 
     A Pandas-based container for (complex) positions in the detector plane,
     namely an order-keyed dictionary of :class:`pandas.DataFrame` including
@@ -392,7 +397,7 @@ class DetectorPositions(object):
 
     def __init__(self, wavelengths, spectrograph=None, name='default'):
         """
-        Initialize container from spectrograph and wavelength array.
+        Initialize container from `spectrograph` and `wavelengths` array.
 
         :param wavelengths: input wavelengths [m]
         :param Spectrograph spectrograph: associated spectrograph (if any)
@@ -410,7 +415,7 @@ class DetectorPositions(object):
 
     def get_coords(self, order=1):
         """
-        Return complex detector coordinates for a given dispersion order.
+        Return complex detector coordinates for a given dispersion `order`.
 
         :param int order: dispersion order
         :raise KeyError: required order does not exist in current instance
@@ -433,7 +438,7 @@ class DetectorPositions(object):
         assert len(detector_positions) == len(self.lbda), \
             "incompatible detector_positions array"
 
-        rcoords = N.around(coords, 12)          # Rounded coordinates
+        rcoords = N.around(coords, 12)          # Rounded coordinates 
         df = self.spectra.setdefault(order,
                                      PD.DataFrame(index=self.lbda,
                                                   columns=(rcoords,)))
@@ -449,8 +454,8 @@ class DetectorPositions(object):
         :param list orders: selection of dispersion orders to be plotted
         :param bool blaze: encode the blaze function in the marker size
         :param int subsampling: sub-sample coordinates and wavelengths
-        :param **kwargs: options propagated to
-                         :method:`matplotlib.pyplot.Axes.scatter`
+        :param kwargs: options propagated to
+                       :func:`matplotlib.pyplot.Axes.scatter`
         :return: :class:`matplotlib.pyplot.Axes`
         """
 
@@ -466,7 +471,7 @@ class DetectorPositions(object):
         kwargs.setdefault('edgecolor', 'none')
         kwargs.setdefault('label', self.name)
 
-        # Segmented colormap
+        # Segmented colormap (blue to red)
         cmap = P.matplotlib.colors.LinearSegmentedColormap(
             'dummy', P.get_cmap('Spectral_r')._segmentdata, len(self.lbda))
 
@@ -536,7 +541,7 @@ class DetectorPositions(object):
 
     def assert_compatibility(self, other, order=1):
         """
-        Assert compatibility in wavelengths and positions with *other*
+        Assert compatibility in wavelengths and positions with `other`
         :class:`DetectorPositions` instance.
 
         :param DetectorPositions other: other instance to be tested
@@ -553,23 +558,38 @@ class DetectorPositions(object):
             "{!r} and {!r} have incompatible input coordinates".format(
                 self.name, other.name)
 
+    def compute_offset(self, other, order=1):
+        """
+        Compute (complex) position offsets to `other` :class:`DetectorPositions`
+        instance.
+
+        :param DetectorPositions other: other instance to be compared to
+        :param int order: dispersion order to be tested
+        :return: (complex) offset positions [m]
+        :rtype: :class:`pandas.DataFrame`
+        :raise AssertionError: incompatible instance
+        :raise KeyError: requested order cannot be found
+        """
+        
+        self.assert_compatibility(other, order=order)
+        
+        # Dataframe of position offsets for requested order
+        dpos = other.spectra[order] - self.spectra[order]
+
+        return dpos
+        
     def compute_rms(self, other, order=1):
         """
-        Compute total RMS distance to *other* :class:`DetectorPositions`
+        Compute total RMS distance to `other` :class:`DetectorPositions`
         instance.
 
         :param DetectorPositions other: other instance to be tested
         :param int order: dispersion order to be tested
         :return: RMS [m]
         :rtype: float
-        :raise AssertionError: incompatible instance
-        :raise KeyError: requested order cannot be found
         """
 
-        self.assert_compatibility(other, order=order)
-
-        # Dataframe of position offsets for requested order
-        dpos = other.spectra[order] - self.spectra[order]
+        dpos = self.compute_offset(other, order=order)
         rms = (dpos.abs() ** 2).values.mean() ** 0.5
 
         return rms
@@ -594,8 +614,8 @@ class LateralColor(object):
 
     def __init__(self, wref, coeffs):
         """
-        Initialization from reference wavelength [m] and lateral color
-        coefficients.
+        Initialization from reference wavelength `wref` [m] and lateral color
+        coefficients `coeffs`.
 
         :param float wref: reference wavelength [m]
         :param list coeffs: lateral color coefficients
@@ -612,7 +632,8 @@ class LateralColor(object):
 
     def amplitude(self, wavelengths):
         """
-        Amplitude of the lateral color chromatic distortion.
+        Compute amplitude of the lateral color chromatic distortion at
+        `wavelengths`.
 
         :param numpy.ndarray wavelengths: wavelengths [mm]
         :return: lateral color amplitude
@@ -668,18 +689,18 @@ class Material(object):
 
     def __init__(self, name):
         """
-        Initialize material from its name.
+        Initialize material from its `name`.
 
         :param str name: material name (should be in :attr:`Material.materials`)
         :raise KeyError: unknown material name
         """
 
-        self.name = name  #: Name of the material
         try:
             #: Sellmeier coefficients `[B1, B2, B3, C1, C2, C3]`
             self.coeffs = self.materials[name]
         except KeyError:
             raise KeyError("Unknown material {}".format(name))
+        self.name = name  #: Name of the material
 
     def __str__(self):
 
@@ -688,7 +709,7 @@ class Material(object):
 
     def index(self, wavelengths):
         r"""
-        Compute refractive index from Sellmeier expansion.
+        Compute refractive index `wavelengths` from Sellmeier expansion.
 
         Sellmeier expansion for refractive index:
 
@@ -830,7 +851,7 @@ class Collimator(CameraOrCollimator):
 
     def __init__(self, config):
         """
-        Initialization from optical configuration dictionary.
+        Initialization from optical configuration `config`.
 
         :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
@@ -917,7 +938,7 @@ class Camera(CameraOrCollimator):
 
     def __init__(self, config):
         """
-        Initialization from optical configuration dictionary.
+        Initialization from optical configuration `config`.
 
         :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
@@ -1032,7 +1053,7 @@ class Prism(object):
 
     def __init__(self, angle, material, tilts=(0, 0, 0)):
         """
-        Initialize grism from optical parameters.
+        Initialize grism from its optical parameters.
 
         :param float angle: prism angle [rad]
         :param material: prism :class:`Material`
@@ -1125,7 +1146,7 @@ class Grating(object):
 
     def __init__(self, rho, material, blaze=0):
         """
-        Initialize grating from optical parameters.
+        Initialize grating from its optical parameters.
 
         :param float rho: grating groove density [lines/mm]
         :param Material material: grating material
@@ -1205,7 +1226,7 @@ class Grism(object):
 
     def __init__(self, config):
         """
-        Initialization from optical configuration dictionary.
+        Initialization from optical configuration `config`.
 
         :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
@@ -1451,7 +1472,7 @@ class Detector(object):
 
     def __init__(self, config):
         """
-        Initialization from optical configuration dictionary.
+        Initialization from optical configuration `config`.
 
         :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
@@ -1505,12 +1526,12 @@ class Spectrograph(object):
        forward
        backward
        test
-       simulate
+       model
     """
 
     def __init__(self, config, grism_on=True, telescope=None):
         """
-        Initialize spectrograph from optical configuration.
+        Initialize spectrograph from optical configuration `config`.
 
         :param OptConfig config: optical configuration
         :param bool grism_on: dispersor presence
@@ -1753,9 +1774,9 @@ class Spectrograph(object):
                 assert N.isclose(source.coords, fposition), \
                     "Backward modeling does not match"
 
-    def simulate(self, simcfg, **kwargs):
+    def model(self, simcfg, **kwargs):
         """
-        Simulate detector spectra.
+        Simulate detector spectra from optical model.
 
         :param SimConfig simcfg: input simulation configuration
         :return: simulated spectra
@@ -1830,8 +1851,8 @@ class Spectrograph(object):
                           'collimator_flength',
                           'camera_flength'], tol=1e-6):
         """
-        Adjust optical parameters *optparam* to match target *detector*
-        positions, using simulation configuration *simcfg*.
+        Adjust optical parameters `optparam` to match target `detector`
+        positions, using simulation configuration `simcfg`.
 
         :param DetectorPositions detector: target positions
         :param SimConfig simcfg: simulation configuration
@@ -1857,9 +1878,9 @@ class Spectrograph(object):
             raise KeyError("Unknown optical parameter '{}'".format(name))
 
         # Initial guess simulation
-        simu = self.simulate(simcfg)
+        model = self.model(simcfg)
         # Test compatibility with objective detector only once
-        simu.assert_compatibility(detector)
+        model.assert_compatibility(detector)
 
         print(" Initial parameters ".center(50, '-'))
         for name, value in zip(optparams, guessparams):
@@ -1869,7 +1890,7 @@ class Spectrograph(object):
         detdf = detector.spectra[1]
 
         # Compute initial RMS
-        dtot = ((simu.spectra[1] - detdf).abs() ** 2).values.sum()
+        dtot = ((model.spectra[1] - detdf).abs() ** 2).values.sum()
         rms = (dtot / detdf.size) ** 0.5  # [m]
         print("  RMS: {} mm = {} px".format(
             rms / 1e-3, rms / self.detector.pxsize))
@@ -1878,9 +1899,9 @@ class Spectrograph(object):
             # Update optical configuration
             self.update(**dict(zip(optparams, pars)))
             # Simulate
-            simu = self.simulate(simcfg)
+            model = self.model(simcfg)
             # Position (complex) offsets (1st-order)
-            dpos = simu.spectra[1] - detector_frame  # [m]
+            dpos = model.spectra[1] - detector_frame  # [m]
             # Total distance
             dtot = (dpos.abs() ** 2).values.sum()    # [m²]
 
@@ -1934,10 +1955,7 @@ def str_direction(direction):
 
 def dump_mpld3(ax, filename):
     """
-    Dump single-axis figure to D3.js html-file.
-
-    .. Note:: Bokeh-0.9 does not support matplotlib scatter, and is therefore
-       of limited use here.
+    Dump single-axis figure to `mpld3 <http://mpld3.github.io/>`_ HTML-file.
     """
 
     import mpld3                # Raise ImportError if needed
@@ -1955,15 +1973,30 @@ def dump_mpld3(ax, filename):
     # Save figure to HTML
     mpld3.save_html(ax.figure, filename,
                     no_extras=False, template_type='simple')
-    print("MPL-D3 figure saved in", filename)
+    print("MPLD3 figure saved in", filename)
 
+def dump_bokeh(fig, filename):
+    """
+    Dump figure *fig* to `bokeh <http://bokeh.pydata.org/>`_ HTML-file.
 
+    .. WARNING:: Bokeh-0.11 does not yet convert properly the figure.
+    """
+
+    from bokeh import mpl
+    from bokeh.plotting import output_file, show
+
+    output_file(filename)
+    show(mpl.to_bokeh(fig))
+    
 # Simulations ==============================
 
 
 def plot_SNIFS_R(optcfg=OptConfig(SNIFS_R),
                  simcfg=SimConfig(SNIFS_SIMU),
                  test=True):
+    """
+    Test-case w/ SNIFS-R configuration.
+    """
 
     # Optical configuration
     print(optcfg)
@@ -1981,9 +2014,9 @@ def plot_SNIFS_R(optcfg=OptConfig(SNIFS_R),
         except AssertionError as err:
             warnings.warn(str(err))
         else:
-            print("Spectrograph test: OK")
+            print("Spectrograph round-trip test: OK")
 
-    detector = spectro.simulate(simcfg)
+    detector = spectro.model(simcfg)
     ax = detector.plot(orders=(-1, 0, 1, 2), blaze=True)
     ax.set_aspect('auto')
     ax.axis(N.array([-2000, 2000, -4000, 4000]) *
