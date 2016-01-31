@@ -1,10 +1,9 @@
-from spectrogrism import __version__
 from setuptools import setup
 
 setup(
     name='spectrogrism',
     description='Grism-based spectrograph modeling',
-    version=__version__,
+    version='0.4',
     py_modules=['spectrogrism', 'nisp'],
     url='https://github.com/ycopin/spectrogrism',
     license='LGPL v3.0',
