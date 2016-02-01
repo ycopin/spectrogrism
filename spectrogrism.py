@@ -33,7 +33,7 @@ Generic utilities for modeling grism-based spectrograph.
 from __future__ import division, print_function
 
 __author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
-__version__ = "0.4"
+__version__ = "0.5"
 __docformat__ = 'restructuredtext en'
 
 
@@ -87,7 +87,7 @@ SNIFS_R = OrderedDict([
     # Detector
     ('detector_pxsize', 15e-6),        # Detector pixel size [m]
     ('detector_angle', 0. / RAD2DEG),  # Rotation of the detector (0=blue is up)
-    ])
+])
 
 #: SNIFS simulation configuration
 SNIFS_SIMU = OrderedDict([
@@ -97,9 +97,10 @@ SNIFS_SIMU = OrderedDict([
     # Focal plane sampling
     ('input_coords', N.linspace(-1e-2, 1e-2, 5)),  # [m]
     ('input_angle', -10. / RAD2DEG),       # Rotation of the focal plane
-    ])
+])
 
 # Technical Classes ==========================================
+
 
 class Configuration(OrderedDict):
 
@@ -114,7 +115,7 @@ class Configuration(OrderedDict):
     """
 
     conftype = 'Configuration'            #: Configuration type
-    
+
     def __init__(self, adict={}):
         """Initialize from dictionary `adict`."""
 
@@ -124,7 +125,7 @@ class Configuration(OrderedDict):
     def __str__(self):
 
         s = [" {} {!r} ".format(self.conftype, self.name).center(70, '-')]
-        s += [ '  {:20s}: {}'.format(key, self[key])
+        s += [ '  {:20s}: {}'.format(str(key), self[key])
                for key in self.keys() ]
 
         return '\n'.join(s)
@@ -165,6 +166,17 @@ class Configuration(OrderedDict):
             self.name, yamlname))
 
         return self
+
+    def _repr_html_(self):
+        """Pretty-printing in ipython notebooks."""
+
+        html = ["<table>"]
+        html.append("<caption>{0} {1}</caption>".format(self.conftype, self.name))
+        for key in self.keys():
+            html.append("<tr><td><pre>{0}</pre></td><td>{1}</td></tr>".format(
+                key, self[key]))
+        html.append("</table>")
+        return ''.join(html)
 
 
 class OptConfig(Configuration):
@@ -303,7 +315,7 @@ class Coordinates2D(complex):
     @classmethod
     def from_polar(cls, r, phi):
 
-        return Coordinates2D(r * N.exp(1j*phi))
+        return Coordinates2D(r * N.exp(1j * phi))
 
 
 class Direction2D(Coordinates2D):
@@ -311,12 +323,6 @@ class Direction2D(Coordinates2D):
     """
     A 2D-angular direction.
     """
-
-    # def __str__(self):
-
-    #     tantheta, phi = self.to_polar()
-    #     return "{:+.2f} x {:+.2f} arcmin".format(
-    #         N.arctan(N.abs(self))*RAD2MIN, N.angle(self)*RAD2MIN)
 
     def __str__(self):
 
@@ -393,7 +399,7 @@ class DetectorPositions(object):
        assert_compatibility
     """
 
-    markers = {0: 'D', 1: 'o', 2: 's'}
+    markers = {0: 'D', 1: 'o', 2: 's', -1: '.'}
 
     def __init__(self, wavelengths, spectrograph=None, name='default'):
         """
@@ -438,7 +444,7 @@ class DetectorPositions(object):
         assert len(detector_positions) == len(self.lbda), \
             "incompatible detector_positions array"
 
-        rcoords = N.around(coords, 12)          # Rounded coordinates 
+        rcoords = N.around(coords, 12)  # Rounded coordinates
         df = self.spectra.setdefault(order,
                                      PD.DataFrame(index=self.lbda,
                                                   columns=(rcoords,)))
@@ -503,7 +509,7 @@ class DetectorPositions(object):
 
             if blaze and self.spectrograph:
                 bztrans = self.spectrograph.grism.blaze_function(lbda, order)
-                s = kwcopy.pop('s', N.maximum(40 * N.sqrt(bztrans), 10))
+                s = kwcopy.pop('s', N.maximum(60 * N.sqrt(bztrans), 10))
             else:
                 s = kwcopy.pop('s', 40)
 
@@ -532,7 +538,7 @@ class DetectorPositions(object):
 
                 kwcopy.pop('label', None)  # Label only for one source
 
-            #kwargs.pop('label', None)      # Label only for one order
+            # kwargs.pop('label', None)      # Label only for one order
 
         if fig:
             fig.colorbar(sc, label=u"Wavelength [µm]")
@@ -570,14 +576,14 @@ class DetectorPositions(object):
         :raise AssertionError: incompatible instance
         :raise KeyError: requested order cannot be found
         """
-        
+
         self.assert_compatibility(other, order=order)
-        
+
         # Dataframe of position offsets for requested order
         dpos = other.spectra[order] - self.spectra[order]
 
         return dpos
-        
+
     def compute_rms(self, other, order=1):
         """
         Compute total RMS distance to `other` :class:`DetectorPositions`
@@ -640,9 +646,9 @@ class LateralColor(object):
         """
 
         if len(self.coeffs):
-            return N.sum([ c*(wavelengths - self.wref)**i
+            return N.sum([ c * (wavelengths - self.wref) ** i
                            for i, c in enumerate(self.coeffs, start=1) ],
-                           axis=0)
+                         axis=0)
         else:
             return N.zeros_like(wavelengths)
 
@@ -721,7 +727,7 @@ class Material(object):
         :return: refractive index
         """
 
-        lmu2 = (wavelengths / 1e-6)**2          # (wavelength [µm])**2
+        lmu2 = (wavelengths / 1e-6) ** 2        # (wavelength [µm])**2
         n2m1 = N.sum([ b / (1 - c / lmu2)       # n**2 - 1
                        for b, c in zip(self.coeffs[:3], self.coeffs[3:]) ],
                      axis=0)
@@ -1975,6 +1981,7 @@ def dump_mpld3(ax, filename):
                     no_extras=False, template_type='simple')
     print("MPLD3 figure saved in", filename)
 
+
 def dump_bokeh(fig, filename):
     """
     Dump figure *fig* to `bokeh <http://bokeh.pydata.org/>`_ HTML-file.
@@ -1987,15 +1994,15 @@ def dump_bokeh(fig, filename):
 
     output_file(filename)
     show(mpl.to_bokeh(fig))
-    
+
 # Simulations ==============================
 
 
-def plot_SNIFS_R(optcfg=OptConfig(SNIFS_R),
-                 simcfg=SimConfig(SNIFS_SIMU),
-                 test=True):
+def plot_SNIFS(optcfg=OptConfig(SNIFS_R),
+               simcfg=SimConfig(SNIFS_SIMU),
+               test=True):
     """
-    Test-case w/ SNIFS-R configuration.
+    Test-case w/ SNIFS-like configuration.
     """
 
     # Optical configuration
@@ -2029,7 +2036,7 @@ def plot_SNIFS_R(optcfg=OptConfig(SNIFS_R),
 
 if __name__ == '__main__':
 
-    ax = plot_SNIFS_R(test=True)
+    ax = plot_SNIFS(test=True)
 
     embed_html = False
     if embed_html:

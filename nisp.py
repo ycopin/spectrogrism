@@ -14,7 +14,6 @@ NISP-specific tools, including a :class:`Zemax` simulation handler.
 
 from __future__ import division, print_function
 
-import os
 import warnings
 from collections import OrderedDict
 
@@ -49,12 +48,12 @@ NISP_R = OrderedDict([
     ('grism_prism_material', 'FS'),       # Prism glass
     ('grism_grating_material', 'FS'),     # Grating resine
     ('grism_prism_angle', 2.88 / S.RAD2DEG),  # Prism angle [rad]
-    #('grism_grating_rho', 19.29),        # Grating groove density [lines/mm]
+    # ('grism_grating_rho', 19.29),        # Grating groove density [lines/mm]
     ('grism_grating_rho', 13.72),         # Grating groove density [lines/mm]
     ('grism_grating_blaze', 2.6 / S.RAD2DEG),  # Blaze angle [rad]
     # Detector
     ('detector_pxsize', 18e-6),           # Detector pixel size [m]
-    ])
+])
 
 # Guessed values (not from official documents)
 NISP_R.update([
@@ -62,7 +61,7 @@ NISP_R.update([
     ('telescope_flength', 25.2),         # Telescope focal length [m]
     # Collimator
     ('collimator_flength', 1946e-3),     # Focal length [m]
-    ('collimator_distortion', 2.8e-3),   
+    ('collimator_distortion', 2.8e-3),
     # Grism
     ('grism_prism_angle', 2.70 / S.RAD2DEG),  # Prism angle [rad]
     ('grism_grating_rho', 13.1),         # Grating groove density [lines/mm]
@@ -70,12 +69,12 @@ NISP_R.update([
     ('camera_flength', 957e-3),          # Focal length [m]
     ('camera_distortion', 29.6e-3),
     # Detector (without input recentering)
-    #('detector_dx', +0.70e-3),                 # Detector x-offset [m]
-    #('detector_dy', +179.7e-3),                # Detector y-offset [m]
+    # ('detector_dx', +0.70e-3),                 # Detector x-offset [m]
+    # ('detector_dy', +179.7e-3),                # Detector y-offset [m]
     # Detector (with input offset of -0.85 deg)
     ('detector_dx', +0.70e-3),           # Detector x-offset [m]
     ('detector_dy', -4.20e-3),           # Detector y-offset [m]
-    ])
+])
 
 
 class Zemax(object):
@@ -187,11 +186,12 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         # Convert back to [[x, y]]
         coords = N.vstack((coords.real, coords.imag)).T / S.RAD2DEG   # [rad]
 
-        simcfg = S.Configuration(dict(name=self.name,
-                            wave_npx=len(waves),
-                            wave_range=[min(waves), max(waves)],
-                            orders=orders,
-                            input_coords=coords))
+        simcfg = S.Configuration([('name', self.name),
+                                  ('wave_npx', len(waves)),
+                                  ('wave_range', [min(waves), max(waves)]),
+                                  ('orders', orders),
+                                  ('input_coords', coords)
+                                  ])
 
         return S.SimConfig(simcfg)
 
@@ -220,7 +220,7 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
                 subdata = subdata[N.argsort(subdata['wave'])]  # Sort subdata
                 # Sanity check
                 assert N.allclose(subdata['wave'], waves)
-                dpos = subdata['x' + colname] + 1j * subdata['y' + colname]
+                dpos = subdata['x' + colname] + 1j * subdata['y' + colname]   # [mm]
                 positions.add_spectrum(xy / S.RAD2DEG, dpos * 1e-3, order=order)
 
         return positions
@@ -232,12 +232,13 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
             fig = P.figure()
             ax = fig.add_subplot(1, 1, 1,
                                  xlabel="x [deg]", ylabel="y [deg]",
-                                 title="{} - Input".format(self.filename))
+                                 title="Simulation '{}'\nInput positions".format(
+                                     self.name))
 
         coords = self.simcfg.get_coords() * S.RAD2DEG  # [deg]
         ax.scatter(coords.real, coords.imag, **kwargs)
 
-        # ax.set_aspect('equal', adjustable='datalim')
+        ax.set_aspect('equal', adjustable='datalim')
 
         return ax
 
@@ -248,7 +249,7 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         if orders is None:
             orders = self.orders
 
-        ax = self.positions.plot(ax=ax, orders=orders, 
+        ax = self.positions.plot(ax=ax, orders=orders,
                                  subsampling=subsampling, **kwargs)
 
         title = "Simulation '{}'".format(self.name)
@@ -280,13 +281,13 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
         # Create wavelength vector
         waves = zpos.index
-        iwaves = N.linspace(0, len(waves)-1, nwaves).round().astype(int)
+        iwaves = N.linspace(0, len(waves) - 1, nwaves).round().astype(int)
         waves = waves[iwaves]
 
         colorMap = P.matplotlib.cm.ScalarMappable(
             norm=P.matplotlib.colors.Normalize(vmin=waves[0], vmax=waves[-1]),
             cmap=P.get_cmap('Spectral_r'))   # (blue to red)
-        
+
         qkey = None                       # Quiver legend (only once)
 
         for wave in waves:
@@ -300,9 +301,9 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
             if qkey is None:              # Add quiver label
                 qkey = ax.quiverkey(q, 0.9, 0.95, 10, "10 px",
                                     labelpos='E', coordinates='figure')
- 
+
         ax.axis([-100, +100, -100, +100])               # [mm]
-    
+
         return ax
 
 if __name__ == '__main__':
@@ -312,13 +313,13 @@ if __name__ == '__main__':
         (1, "Zemax/run_190315.dat"),           # 1st-order simulation
         (0, "Zemax/run_011115_conf2_o0.dat"),  # 0th-order simulation
         (2, "Zemax/run_161115_conf2_o2.dat"),  # 2nd-order simulation
-        ])
+    ])
 
     subsampling = 3             # Subsample output plot
     adjust = False              # Test optical parameter adjustment
     embed_html = False          # Generate MPLD3 figure
 
-    # 1st-order Zemax simulation
+    # Zemax simulations
     zmx = Zemax(simulations)
     print(zmx)
 
@@ -352,7 +353,7 @@ if __name__ == '__main__':
     print("1st-order RMS = {:.4f} mm = {:.2f} px".format(
         rms / 1e-3, rms / spectro.detector.pxsize))
 
-    #kwargs = dict(edgecolor=None, facecolor='none', linewidths=1)  # Open symbols
+    # kwargs = dict(edgecolor=None, facecolor='none', linewidths=1)  # Open symbols
     kwargs = {}                      # Default
     if not adjust:                   # Out-of-the-box optical model
         model.plot(ax=ax, zorder=0,  # Draw below Zemax
@@ -402,7 +403,7 @@ if __name__ == '__main__':
 
     ax.axis([-100, +100, -100, +100])               # [mm]
     ax.set_aspect('equal', adjustable='datalim')
-    #ax.set_axisbg('0.9')
+    # ax.set_axisbg('0.9')
     ax.legend(fontsize='small', frameon=True, framealpha=0.5)
 
     if embed_html:
@@ -414,5 +415,5 @@ if __name__ == '__main__':
     # Position offset quiver plots
     for order in zmx.orders:
         ax = zmx.plot_offsets(model, order=order)
-    
+
     P.show()

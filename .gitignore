@@ -4,3 +4,4 @@
 /build/
 /spectrogrism.egg-info/
 /dist/
+.ipynb_checkpoints/

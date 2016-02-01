@@ -38,6 +38,7 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.autosummary',
     'sphinx.ext.inheritance_diagram',
+    'nbsphinx',                 # Support for Ipython Notebooks
 ]
 
 # Autodoc configuration
@@ -81,7 +82,7 @@ copyright = u'2015, Yannick Copin'
 # built documents.
 #
 # The short X.Y version.
-version = '0.4'
+version = '0.5'
 # The full version, including alpha/beta/rc tags.
 release = version
 
@@ -98,7 +99,9 @@ today_fmt = '%y/%m/%d, %H:%M'
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
-exclude_patterns = ['_build', 'requirements.txt', 'spectrogrism.egg-info']
+exclude_patterns = ['_build', 'build',
+                    'requirements.txt', 'spectrogrism.egg-info',
+                    '**.ipynb_checkpoints']
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.
@@ -135,7 +138,10 @@ html_theme = 'alabaster'
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-#html_theme_options = {}
+html_theme_options = {
+    'page_width': '80%',
+    'sidebar_width': '15%',
+}
 
 # Add any paths that contain custom themes here, relative to this directory.
 #html_theme_path = []
