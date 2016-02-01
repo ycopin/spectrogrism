@@ -3,4 +3,4 @@ pandas
 matplotlib
 pyyaml
 nbsphinx
-ipykernel
+#ipykernel
