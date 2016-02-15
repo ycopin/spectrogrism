@@ -73,7 +73,6 @@ SNIFS_R = OrderedDict([
     ('collimator_distortion', +2.141),     # r² distortion coefficient
     ('collimator_lcolor_coeffs', [-4.39879e-6, 8.91241e-10, -1.82941e-13]),
     # Grism
-    ('grism_on', True),                      # Is prism on the way?
     ('grism_prism_material', 'BK7'),         # Prism glass
     ('grism_prism_angle', 17.28 / RAD2DEG),  # Prism angle [rad]
     ('grism_grating_rho', 200.),   # Grating groove density [lines/mm]
@@ -93,7 +92,7 @@ SNIFS_R = OrderedDict([
 SNIFS_SIMU = OrderedDict([
     ('name', u"standard"),                 # Configuration name
     ('wave_npx', 10),                      # Nb of pixels per spectrum
-    ('orders', range(-1, 3)),              # Dispersion orders
+    ('modes', (1, 0, 2, -1)),              # Dispersion orders
     # Focal plane sampling
     ('input_coords', N.linspace(-1e-2, 1e-2, 5)),  # [m]
     ('input_angle', -10. / RAD2DEG),       # Rotation of the focal plane
@@ -251,7 +250,7 @@ class Spectrum(object):
 
     def __init__(self, wavelengths, fluxes, name='spectrum'):
         """
-        Initialize from `wavelengths` and `fluxes` arrays.
+        Initialize from wavelength and flux arrays.
 
         :param numpy.ndarray wavelengths: input wavelengths [m]
         :param numpy.ndarray fluxes: input fluxes [arbitrary units]
@@ -309,11 +308,13 @@ class Coordinates2D(complex):
         return complex.__new__(cls, *args, **kwargs)
 
     def to_polar(self):
+        u"""Convert 2D-coords from cartesian (x, y) to polar (r, φ)."""
 
         return N.abs(self), N.angle(self)
 
     @classmethod
     def from_polar(cls, r, phi):
+        u"""Convert 2D-coords from polar (r, φ) to cartesian (x, y)."""
 
         return Coordinates2D(r * N.exp(1j * phi))
 
@@ -351,10 +352,10 @@ class PointSource(object):
 
     def __init__(self, coords, spectrum=None, **kwargs):
         """
-        Initialize from position/direction `coords` and `spectrum`.
+        Initialize from position/direction and spectrum.
 
-        :param complex coords: source :class:`Position2D` [m] or
-                               :class:`Direction2D` [rad]
+        :param complex coords: source
+                               :class:`Position2D` [m] or :class:`Direction2D` [rad]
         :param Spectrum spectrum: source spectrum (default to standard spectrum)
         :param kwargs: propagated to :func:`Spectrum.default()` constructor
         """
@@ -380,14 +381,14 @@ class DetectorPositions(object):
     A container for :class:`Position2D` on the detector.
 
     A Pandas-based container for (complex) positions in the detector plane,
-    namely an order-keyed dictionary of :class:`pandas.DataFrame` including
+    namely a mode-keyed dictionary of :class:`pandas.DataFrame` including
     complex detector positions, with wavelengths as `index` and coords as
     `columns`.
 
     .. Warning::
 
        * :class:`pandas.Panel` does not seem to support deffered construction,
-         hence the usage of a order-keyed dict.
+         hence the usage of a mode-keyed dict.
        * indexing by float is not precisely a good idea. Float indices
          (wavelengths and coordinates) are therefore rounded first with a
          sufficient precision (e.g. nm for wavelengths).
@@ -399,11 +400,12 @@ class DetectorPositions(object):
        assert_compatibility
     """
 
-    markers = {0: 'D', 1: 'o', 2: 's', -1: '.'}
+    markers = {-1: '.', 0: 'D', 1: 'o', 2: 's',
+               'J': 'D', 'H': 'o', 'K': 's'}
 
     def __init__(self, wavelengths, spectrograph=None, name='default'):
         """
-        Initialize container from `spectrograph` and `wavelengths` array.
+        Initialize container from spectrograph and wavelength array.
 
         :param wavelengths: input wavelengths [m]
         :param Spectrograph spectrograph: associated spectrograph (if any)
@@ -416,48 +418,48 @@ class DetectorPositions(object):
         self.spectrograph = spectrograph        #: Associated spectrograph
 
         self.lbda = N.around(wavelengths, 12)   #: Rounded wavelengths [m]
-        self.spectra = {}                       #: {order: dataframe}
+        self.spectra = {}                       #: {mode: dataframe}
         self.name = name                        #: Name
 
-    def get_coords(self, order=1):
+    def get_coords(self, mode=1):
         """
-        Return complex detector coordinates for a given dispersion `order`.
+        Return complex detector coordinates for a given observing mode.
 
-        :param int order: dispersion order
-        :raise KeyError: required order does not exist in current instance
+        :param mode: observing mode (dispersion order or photometric band)
+        :raise KeyError: required mode does not exist in current instance
         """
 
         return N.sort_complex(
-            self.spectra[order].columns.values.astype(N.complex))
+            self.spectra[mode].columns.values.astype(N.complex))
 
-    def add_spectrum(self, coords, detector_positions, order=1):
+    def add_spectrum(self, coords, positions, mode=1):
         """
-        Add `detector_positions` corresponding to source at `coords`
-        and dispersion `order`.
+        Complete detector positions corresponding to a source and an observing
+        mode.
 
         :param complex coords: input source coordinates
-        :param numpy.ndarray detector_positions: (complex) positions
+        :param numpy.ndarray positions: (complex) positions
             in the detector plane
-        :param int order: dispersion order
+        :param mode: observing mode (dispersion order or photometric band)
         """
 
-        assert len(detector_positions) == len(self.lbda), \
+        assert len(positions) == len(self.lbda), \
             "incompatible detector_positions array"
 
         rcoords = N.around(coords, 12)  # Rounded coordinates
-        df = self.spectra.setdefault(order,
+        df = self.spectra.setdefault(mode,
                                      PD.DataFrame(index=self.lbda,
                                                   columns=(rcoords,)))
-        df[rcoords] = detector_positions
+        df[rcoords] = positions
 
-    def plot(self, ax=None, coords=None, orders=None, blaze=False,
+    def plot(self, ax=None, coords=None, modes=None, blaze=False,
              subsampling=0, **kwargs):
         """
         Plot spectra on detector plane.
 
         :param ax: pre-existing :class:`matplotlib.pyplot.Axes` instance if any
         :param list coords: selection of input coordinates to be plotted
-        :param list orders: selection of dispersion orders to be plotted
+        :param list modes: selection of observing modes to be plotted
         :param bool blaze: encode the blaze function in the marker size
         :param int subsampling: sub-sample coordinates and wavelengths
         :param kwargs: options propagated to
@@ -482,7 +484,7 @@ class DetectorPositions(object):
             'dummy', P.get_cmap('Spectral_r')._segmentdata, len(self.lbda))
 
         # Sub-sampling of coordinates and wavelengths
-        if subsampling:
+        if subsampling > 1:
             lbda = self.lbda[::subsampling]
         else:
             lbda = self.lbda
@@ -490,46 +492,46 @@ class DetectorPositions(object):
         # Default blaze transmission
         bztrans = N.ones_like(lbda)
 
-        if orders is None:                        # Plot all orders
-            orders = sorted(self.spectra)
+        if modes is None:               # Plot all modes
+            modes = sorted(self.spectra)
 
-        for order in orders:
+        for mode in modes:
             try:
-                df = self.spectra[order]
+                df = self.spectra[mode]
             except KeyError:
-                warnings.warn("Order #{} not in '{}', skipped".format(
-                    order, self.name))
+                warnings.warn("{}{} not in '{}', skipped".format(
+                    "Order #" if isinstance(mode, int) else "Band ",
+                    mode, self.name))
                 continue
 
             kwcopy = kwargs.copy()
-            marker = kwcopy.pop('marker',
-                                self.markers.get(abs(order), 'o'))
-            if len(orders) > 1:           # Append order to label
-                kwcopy['label'] += " #{}".format(order)
+            marker = kwcopy.pop('marker', self.markers.get(mode, 'o'))
+            kwcopy['label'] += " {}{}".format(
+                "#" if isinstance(mode, int) else '', mode)
 
             if blaze and self.spectrograph:
-                bztrans = self.spectrograph.grism.blaze_function(lbda, order)
+                bztrans = self.spectrograph.grism.blaze_function(lbda, mode)
                 s = kwcopy.pop('s', N.maximum(60 * N.sqrt(bztrans), 10))
             else:
                 s = kwcopy.pop('s', 40)
 
             if coords is None:            # Plot all spectra
-                xys = self.get_coords(order=order)
+                xys = self.get_coords(mode=mode)
             else:
                 xys = coords              # Plot specific spectra
 
-            if subsampling:
+            if subsampling > 1:
                 xys = xys[::subsampling]
 
             for xy in xys:                # Loop over sources
                 try:
                     positions = df[xy].values / 1e-3  # Complex positions [mm]
                 except KeyError:
-                    warnings.warn("Source {} is unknown, skipped".format(
-                        str_position(xy)))
+                    warnings.warn(
+                        "Source {} is unknown, skipped".format(str_position(xy)))
                     continue
 
-                if subsampling:
+                if subsampling > 1:
                     positions = positions[::subsampling]
 
                 sc = ax.scatter(positions.real, positions.imag,
@@ -538,67 +540,67 @@ class DetectorPositions(object):
 
                 kwcopy.pop('label', None)  # Label only for one source
 
-            # kwargs.pop('label', None)      # Label only for one order
+            # kwargs.pop('label', None)      # Label only for one mode
 
         if fig:
             fig.colorbar(sc, label=u"Wavelength [µm]")
 
         return ax
 
-    def assert_compatibility(self, other, order=1):
+    def assert_compatibility(self, other, modes=None):
         """
-        Assert compatibility in wavelengths and positions with `other`
-        :class:`DetectorPositions` instance.
+        Assert compatibility in wavelengths and positions with other instance.
 
-        :param DetectorPositions other: other instance to be tested
-        :param int order: dispersion order to be tested
+        :param DetectorPositions other: other instance to be confronted
+        :param list modes: observing modes (dispersion order or photometric band)
         :raise AssertionError: incompatible instance
         """
+
+        if modes is None:
+            modes = sorted(self.spectra)
 
         assert isinstance(other, DetectorPositions)
         assert N.allclose(self.lbda, other.lbda), \
             "{!r} and {!r} have incompatible wavelengths".format(
                 self.name, other.name)
-        assert order in self.spectra and order in other.spectra
-        assert N.allclose(self.get_coords(order), other.get_coords(order)), \
-            "{!r} and {!r} have incompatible input coordinates".format(
-                self.name, other.name)
+        for mode in modes:
+            assert mode in self.spectra and mode in other.spectra
+            assert N.allclose(self.get_coords(mode), other.get_coords(mode)), \
+                "{!r} and {!r} have incompatible input coordinates for mode {}".format(
+                    self.name, other.name, mode)
 
-    def compute_offset(self, other, order=1):
+    def compute_offset(self, other, mode=1):
         """
-        Compute (complex) position offsets to `other` :class:`DetectorPositions`
-        instance.
+        Compute (complex) position offsets to other instance.
 
         :param DetectorPositions other: other instance to be compared to
-        :param int order: dispersion order to be tested
-        :return: (complex) offset positions [m]
+        :param mode: observing mode (dispersion order or photometric band)
+        :return: (complex) position offsets [m]
         :rtype: :class:`pandas.DataFrame`
         :raise AssertionError: incompatible instance
-        :raise KeyError: requested order cannot be found
+        :raise KeyError: requested mode cannot be found
+
+        .. Warning:: `self` and `other` are supposed to be compatible
+           (see :func:`assert_compatibility`).
         """
 
-        self.assert_compatibility(other, order=order)
+        # Dataframe of (complex) position offsets for requested mode
+        return other.spectra[mode] - self.spectra[mode]
 
-        # Dataframe of position offsets for requested order
-        dpos = other.spectra[order] - self.spectra[order]
-
-        return dpos
-
-    def compute_rms(self, other, order=1):
+    def compute_rms(self, other, mode=1):
         """
-        Compute total RMS distance to `other` :class:`DetectorPositions`
-        instance.
+        Compute total RMS distance to other instance.
 
         :param DetectorPositions other: other instance to be tested
-        :param int order: dispersion order to be tested
+        :param mode: observing mode (dispersion order or photometric band)
         :return: RMS [m]
         :rtype: float
+
+        .. Warning:: `self` and `other` are supposed to be compatible
+           (see :func:`assert_compatibility`).
         """
 
-        dpos = self.compute_offset(other, order=order)
-        rms = (dpos.abs() ** 2).values.mean() ** 0.5
-
-        return rms
+        return (self.compute_offset(other, mode=mode).abs() ** 2).values.mean() ** 0.5
 
 
 class LateralColor(object):
@@ -620,8 +622,7 @@ class LateralColor(object):
 
     def __init__(self, wref, coeffs):
         """
-        Initialization from reference wavelength `wref` [m] and lateral color
-        coefficients `coeffs`.
+        Initialization from reference wavelength and lateral color coefficients.
 
         :param float wref: reference wavelength [m]
         :param list coeffs: lateral color coefficients
@@ -638,8 +639,7 @@ class LateralColor(object):
 
     def amplitude(self, wavelengths):
         """
-        Compute amplitude of the lateral color chromatic distortion at
-        `wavelengths`.
+        Compute amplitude of the lateral color chromatic distortion.
 
         :param numpy.ndarray wavelengths: wavelengths [mm]
         :return: lateral color amplitude
@@ -715,7 +715,7 @@ class Material(object):
 
     def index(self, wavelengths):
         r"""
-        Compute refractive index `wavelengths` from Sellmeier expansion.
+        Compute refractive index from Sellmeier expansion.
 
         Sellmeier expansion for refractive index:
 
@@ -800,7 +800,7 @@ class CameraOrCollimator(object):
     def pol2rect(r, phi):
         r"""
         Convert modulus :math:`r` and phase :math:`\phi` into position
-        :math:`x + jy = r\exp(j\phi`)`.
+        :math:`x + jy = r\exp(j\phi)`.
 
         :param numpy.ndarray r: modulus
         :param numpy.ndarray phi: phase [rad]
@@ -1057,21 +1057,21 @@ class Prism(object):
        refraction
     """
 
-    def __init__(self, angle, material, tilts=(0, 0, 0)):
+    def __init__(self, angle, material, tilts=[0, 0, 0]):
         """
         Initialize grism from its optical parameters.
 
         :param float angle: prism angle [rad]
         :param material: prism :class:`Material`
-        :param 3-tuple tilts: prism tilts (x,y,z) [rad]
+        :param 3-list tilts: prism tilts (x, y, z) [rad]
         """
 
         assert isinstance(material, Material), "material should be a Material"
-        assert len(tilts) == 3, "tilts should be a 3-tuple"
+        assert len(tilts) == 3, "tilts should be a 3-list"
 
         self.angle = angle                #: Prism angle [rad]
         self.material = material          #: Prism material
-        self.tilts = tilts                #: Prism tilts (x,y,z) [rad]
+        self.tilts = tilts                #: Prism tilts (x, y, z) [rad]
 
     def __str__(self):
 
@@ -1080,6 +1080,45 @@ class Prism(object):
 
         return "Prism [{}]: A={:.2f}°, tilts={}".format(
             self.material.name, self.angle * RAD2DEG, tilts)
+
+    @property
+    def tiltx(self):
+        """
+        Expose prism x-tilt [rad], rotation around the prism apex/grating grooves.
+        """
+
+        return self.tilts[0]
+
+    @tiltx.setter
+    def tiltx(self, xtilt):
+
+        self.tilts[0] = xtilt
+
+    @property
+    def tilty(self):
+        """
+        Expose prism y-tilt [rad].
+        """
+
+        return self.tilts[1]
+
+    @tilty.setter
+    def tilty(self, ytilt):
+
+        self.tilts[1] = ytilt
+
+    @property
+    def tiltz(self):
+        """
+        Expose prism z-tilt [rad], rotation around the optical axis.
+        """
+
+        return self.tilts[2]
+
+    @tiltz.setter
+    def tiltz(self, ztilt):
+
+        self.tilts[2] = ztilt
 
     @staticmethod
     def rotation(x, y, theta):
@@ -1232,7 +1271,7 @@ class Grism(object):
 
     def __init__(self, config):
         """
-        Initialization from optical configuration `config`.
+        Initialization from optical configuration.
 
         :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
@@ -1241,6 +1280,7 @@ class Grism(object):
         try:
             angle = config['grism_prism_angle']
             prism_material = config['grism_prism_material']
+            tilts = [ config.get('grism_prism_tilt' + ax, 0) for ax in 'xyz' ]
             rho = config['grism_grating_rho']
             grating_material = config['grism_grating_material']
             blaze = config.get('grism_grating_blaze', 0)
@@ -1249,21 +1289,8 @@ class Grism(object):
                 "Invalid configuration file: missing key {!r}".format(
                     err.args[0]))
 
-        self.prism = Prism(angle, Material(prism_material))
+        self.prism = Prism(angle, Material(prism_material), tilts=tilts)
         self.grating = Grating(rho, Material(grating_material), blaze)
-
-    @property
-    def tilts(self):
-        """
-        Expose prism tilts *(x, y, z)* [rad].
-        """
-
-        return self.prism.tilts
-
-    @tilts.setter
-    def tilts(self, tilts):
-
-        self.prism.tilts = tilts
 
     def __str__(self):
 
@@ -1317,7 +1344,7 @@ class Grism(object):
     @staticmethod
     def direction2xyz(direction):
         """
-        Convert a 2D-direction into a 3D-direction (i.e. a unit vector).
+        Convert a 2D-direction into a 3D-direction (a unit vector).
 
         :param complex direction: 2D-direction
         :return: 3D-direction
@@ -1336,7 +1363,7 @@ class Grism(object):
     @staticmethod
     def xyz2direction(xyz):
         """
-        Convert a 3D-direction (i.e. a unit vector) into a 2D-direction.
+        Convert a 3D-direction (a unit vector) into a 2D-direction.
 
         :param 3-tuple xyz: 3D-direction
         :return: 2D-direction
@@ -1532,16 +1559,15 @@ class Spectrograph(object):
        forward
        backward
        test
-       model
+       predict_positions
     """
 
-    def __init__(self, config, grism_on=True, telescope=None):
+    def __init__(self, config, telescope=None):
         """
-        Initialize spectrograph from optical configuration `config`.
+        Initialize spectrograph from optical configuration.
 
         :param OptConfig config: optical configuration
-        :param bool grism_on: dispersor presence
-        :param Telescope telescope: input telescope
+        :param Telescope telescope: input telescope if any
         """
 
         self.config = config                       #: Optical configuration
@@ -1551,12 +1577,6 @@ class Spectrograph(object):
         self.grism = Grism(self.config)            #: Grism
         self.camera = Camera(self.config)          #: Camera
         self.detector = Detector(self.config)      #: Detector
-
-        self.grism_on = grism_on
-
-    def set_grism(self, flag):
-
-        self.grism_on = flag
 
     @property
     def gamma(self):
@@ -1568,14 +1588,11 @@ class Spectrograph(object):
 
     def __str__(self):
 
-        s = [" Spectrograph ".center(60, '-')]
+        s = [" Spectrograph ".center(70, '-')]
         if self.telescope:
             s.append(self.telescope.__str__())
         s.append(self.collimator.__str__())
-        if self.grism_on:
-            s.append(self.grism.__str__())
-        else:
-            s.append("Grism:      ***REMOVED***")
+        s.append(self.grism.__str__())
         s.append(self.camera.__str__())
         s.append(self.detector.__str__())
         s.append("Spectrograph magnification: {0.gamma:.3f}".format(self))
@@ -1618,12 +1635,12 @@ class Spectrograph(object):
 
         return 1 / dydl
 
-    def forward(self, source, order=1):
+    def forward(self, source, mode=1):
         """
         Forward light propagation from a focal-plane point source.
 
         :param source: input :class:`PointSource`
-        :param int order: dispersion order
+        :param mode: observing mode (dispersion order or photometric band)
         :return: (complex) 2D-positions in detector plane
         :rtype: :class:`numpy.ndarray`
         """
@@ -1641,10 +1658,10 @@ class Spectrograph(object):
         # Collimator
         directions = self.collimator.forward(
             positions, wavelengths, self.gamma)
-        if self.grism_on:
+        if isinstance(mode, int):       # Spectroscopic mode
             # Grism
             directions = self.grism.forward(
-                directions, wavelengths, order=order)
+                directions, wavelengths, order=mode)
         # Camera
         positions = self.camera.forward(directions, wavelengths)
         # Detector
@@ -1652,14 +1669,14 @@ class Spectrograph(object):
 
         return positions
 
-    def backward(self, position, wavelength, order=1):
+    def backward(self, position, wavelength, mode=1):
         """
         Backward light propagation from a detector-plane 2D-position
         and wavelength.
 
         :param complex position: 2D-position in the detector plane [m]
         :param float wavelength: wavelength [m]
-        :param int order: dispersion order
+        :param mode: observing mode (dispersion order or photometric band)
         :return: 2D-position in the focal plane [m]
         :rtype: complex
         """
@@ -1668,9 +1685,9 @@ class Spectrograph(object):
         position = self.detector.backward(position)
         # Camera
         direction = self.camera.backward(position, wavelength)
-        if self.grism_on:
+        if isinstance(mode, int):       # Spectroscopic mode
             # Grism
-            direction = self.grism.backward(direction, wavelength, order=order)
+            direction = self.grism.backward(direction, wavelength, order=mode)
         # Collimator
         position = self.collimator.backward(direction, wavelength, self.gamma)
         if self.telescope:
@@ -1682,13 +1699,13 @@ class Spectrograph(object):
         return coords
 
     def test(self, simu,
-             coords=(1e-3 + 2e-3j), order=1, verbose=False):
+             coords=(1e-3 + 2e-3j), mode=1, verbose=False):
         """
         Test forward and backward propagation in spectrograph.
 
         :param SimConfig simu: simulation configuration
         :param complex position: tested 2D-position in the focal plane [m]
-        :param int order: tested dispersion order
+        :param mode: observing mode (dispersion order or photometric band)
         :param bool verbose: verbose-mode
         """
 
@@ -1702,7 +1719,7 @@ class Spectrograph(object):
         wavelengths = source.spectrum.wavelengths
 
         if verbose:
-            print(" SPECTROGRAPH TEST ".center(60, '='))
+            print(" SPECTROGRAPH TEST ".center(70, '='))
             print("Input source:", source)
             print("Wavelengths [µm]:", wavelengths / 1e-6)
 
@@ -1719,10 +1736,10 @@ class Spectrograph(object):
                                               wavelengths, self.gamma)
         if verbose:
             print("Directions (coll, forward) [×1e6]:", fdirections * 1e6)
-        if self.grism_on:
+        if isinstance(mode, int):       # Spectroscopic mode
             # Grism
             fdirections = self.grism.forward(fdirections,
-                                             wavelengths, order=order)
+                                             wavelengths, order=mode)
             if verbose:
                 print("Directions (grism, forward) [×1e6]:", fdirections * 1e6)
         # Camera
@@ -1748,9 +1765,9 @@ class Spectrograph(object):
             bdirection = self.camera.backward(dpos, lbda)
             if verbose:
                 print("Direction (camera, backward) [×1e6]:", bdirection * 1e6)
-            if self.grism_on:
+            if isinstance(mode, int):       # Spectroscopic mode
                 # Grism
-                bdirection = self.grism.backward(bdirection, lbda, order=order)
+                bdirection = self.grism.backward(bdirection, lbda, order=mode)
                 if verbose:
                     print("Direction (grism, backward) [×1e6]:",
                           bdirection * 1e6)
@@ -1780,11 +1797,12 @@ class Spectrograph(object):
                 assert N.isclose(source.coords, fposition), \
                     "Backward modeling does not match"
 
-    def model(self, simcfg, **kwargs):
+    def predict_positions(self, simcfg, **kwargs):
         """
         Simulate detector spectra from optical model.
 
         :param SimConfig simcfg: input simulation configuration
+        :param kwargs: configuration options (e.g. predicted `modes`)
         :return: simulated spectra
         :rtype: :class:`DetectorPositions`
         """
@@ -1807,7 +1825,7 @@ class Spectrograph(object):
         wavelengths = source.spectrum.wavelengths
 
         # Simulation parameters
-        orders = simcfg.get('orders', [1])
+        modes = simcfg.get('modes', [1])
 
         # Detector positions
         detector = DetectorPositions(
@@ -1817,9 +1835,9 @@ class Spectrograph(object):
         # Simulate forward propagation for all focal-plane positions
         for xy in coords:
             source.coords = xy    # Update source position
-            for order in orders:  # Loop over dispersion orders
-                dpos = self.forward(source, order)  # Detector plane position
-                detector.add_spectrum(source.coords, dpos, order=order)
+            for mode in modes:    # Loop over observing modes
+                dpos = self.forward(source, mode)  # Detector plane position
+                detector.add_spectrum(source.coords, dpos, mode=mode)
 
         return detector
 
@@ -1852,79 +1870,81 @@ class Spectrograph(object):
             else:
                 setattr(obj, attr, value)
 
-    def adjust(self, detector, simcfg,
+    def adjust(self, positions, simcfg, modes=None,
                optparams=['telescope_flength',
                           'collimator_flength',
                           'camera_flength'], tol=1e-6):
         """
-        Adjust optical parameters `optparam` to match target `detector`
-        positions, using simulation configuration `simcfg`.
+        Adjust optical parameters to match target detector positions, according to
+        simulation configuration.
 
-        :param DetectorPositions detector: target positions
+        :param DetectorPositions positions: target positions
         :param SimConfig simcfg: simulation configuration
+        :param list modes: adjusted observing modes (default: simulated modes)
         :param list optparams: optical parameters to be adjusted
         :param float tol: optimization tolerance
         :return: result from the optimization
         :rtype: :class:`scipy.optimize.OptimizeResult`
         :raise KeyError: unknown optical parameter
-
-        .. Warning:: only adjustment on 1st-order positions is currently
-           implemented.
         """
 
         import scipy.optimize as SO
 
-        if simcfg.get('orders', [1]) != [1]:
-            raise NotImplementedError(
-                "Adjustment is implemented for 1st-order only")
+        print(" SPECTROGRAPH ADJUSTMENT ".center(70, '='))
+
+        # Simulation parameters
+        if modes is None:
+            modes = simcfg.get('modes', [1])
+        print("Adjusted modes:", modes)
 
         try:
             guessparams = [ self.config[name] for name in optparams ]
         except KeyError:
             raise KeyError("Unknown optical parameter '{}'".format(name))
 
-        # Initial guess simulation
-        model = self.model(simcfg)
-        # Test compatibility with objective detector only once
-        model.assert_compatibility(detector)
-
-        print(" Initial parameters ".center(50, '-'))
+        print(" Initial parameters ".center(70, '-'))
         for name, value in zip(optparams, guessparams):
             print("  {:20s}: {}".format(name, value))
 
-        # Objective dataframe
-        detdf = detector.spectra[1]
+        # Initial guess simulation
+        mpositions = self.predict_positions(simcfg)
+        # Test compatibility with objective detector positions only once
+        mpositions.assert_compatibility(positions, modes=modes)
 
-        # Compute initial RMS
-        dtot = ((model.spectra[1] - detdf).abs() ** 2).values.sum()
-        rms = (dtot / detdf.size) ** 0.5  # [m]
-        print("  RMS: {} mm = {} px".format(
+        rmss = []
+        for mode in modes:
+            rms = positions.compute_rms(mpositions, mode=mode)
+            print("Mode {} RMS: {} mm = {} px".format(
+                mode, rms / 1e-3, rms / self.detector.pxsize))
+            rmss.append(rms)
+        rms = (sum( rms ** 2 for rms in rmss ) / len(modes)) ** 0.5
+        print("Total RMS: {} mm = {} px".format(
             rms / 1e-3, rms / self.detector.pxsize))
 
-        def objfun(pars, detector_frame):
+        def objfun(pars, positions):
+            """Sum of squared mean offset position."""
             # Update optical configuration
             self.update(**dict(zip(optparams, pars)))
             # Simulate
-            model = self.model(simcfg)
-            # Position (complex) offsets (1st-order)
-            dpos = model.spectra[1] - detector_frame  # [m]
-            # Total distance
-            dtot = (dpos.abs() ** 2).values.sum()    # [m²]
+            mpositions = self.predict_positions(simcfg)
+            dtot = sum( ((mpositions.spectra[mode] -
+                          positions.spectra[mode]).abs() ** 2).values.mean()
+                        for mode in modes )
 
             return dtot
 
         result = SO.minimize(objfun,
                              guessparams,
-                             args=(detdf,),
+                             args=(positions,),
                              method='tnc',
                              options={'disp': True, 'xtol': tol})
         print("Minimization: {}".format(result.message))
         if result.success:
-            print(" Adjusted parameters ".center(50, '-'))
+            print(" Adjusted parameters ".center(70, '-'))
             for name, value in zip(optparams, N.atleast_1d(result.x)):
                 print("  {:20s}: {}".format(name, value))
             # Compute final RMS
-            result.rms = (result.fun / detdf.size) ** 0.5  # [m]
+            result.rms = (result.fun / len(modes)) ** 0.5  # [m]
             print("  RMS: {} mm = {} px".format(
                 result.rms / 1e-3, result.rms / self.detector.pxsize))
 
@@ -2009,22 +2029,25 @@ def plot_SNIFS(optcfg=OptConfig(SNIFS_R),
     print(optcfg)
 
     # Spectrograph
-    spectro = Spectrograph(optcfg, grism_on=optcfg.get('grism_on', True))
+    spectro = Spectrograph(optcfg)
     print(spectro)
 
     # Simulation configuration
     print(simcfg)
 
     if test:
-        try:
-            spectro.test(simcfg, verbose=False)
-        except AssertionError as err:
-            warnings.warn(str(err))
-        else:
-            print("Spectrograph round-trip test: OK")
+        print(" Spectrograph round-trip test ".center(70, '-'))
+        for mode in simcfg['modes']:
+            try:
+                spectro.test(simcfg, mode=mode, verbose=False)
+            except AssertionError as err:
+                warnings.warn("Order #{}: {}".format(mode, str(err)))
+            else:
+                print("Order #{:+d}: OK".format(mode))
 
-    detector = spectro.model(simcfg)
-    ax = detector.plot(orders=(-1, 0, 1, 2), blaze=True)
+    positions = spectro.predict_positions(simcfg)
+    ax = positions.plot(modes=(-1, 0, 1, 2), blaze=True)
+    ax.legend(loc='upper left', fontsize='small', frameon=True, framealpha=0.5)
     ax.set_aspect('auto')
     ax.axis(N.array([-2000, 2000, -4000, 4000]) *
             spectro.detector.pxsize / 1e-3)  # [mm]

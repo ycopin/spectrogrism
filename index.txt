@@ -60,7 +60,7 @@ geometric quadratic radial distortion and lateral colors (transverse chromatic
 aberrations).  :class:`spectrogrism.Prism` includes 3D-tilts.
 
 .. raw:: html
-  :file: SNIFS-R.html
+  :file: _static/SNIFS-R.html
 
 .. raw:: html
 
@@ -78,7 +78,7 @@ aberrations).  :class:`spectrogrism.Prism` includes 3D-tilts.
 
    \begin{figure}[htbp]
      \centering
-     \includegraphics{SNIFS-R}
+     \includegraphics{../../_static/SNIFS-R}
      \caption{\textbf{Figure:} Modeling of 5×5 sources in the detector
        plane at 10 individual wavelengths, using the SNIFS-R optical
        configuration.  Orders -1 (very top), 0 (undispersed), 1
@@ -86,7 +86,7 @@ aberrations).  :class:`spectrogrism.Prism` includes 3D-tilts.
        symbol somehow encodes the blaze function of the spectrograph.}
    \end{figure}
 
-.. .. figure:: SNIFS-R.*
+.. .. figure:: _static/SNIFS-R.*
 .. 
 ..    **Figure:** Modeling of 5×5 sources in the detector plane at 10 individual
 ..    wavelengths, using the SNIFS-R optical configuration.  Orders -1 (very top),
@@ -107,7 +107,7 @@ Positions and directions
 
 
 Near Infrared Spectrometer and Photometer (NISP)
-================================================
+------------------------------------------------
 
 The :mod:`spectrogrism` optical model is used to simulate the *Near Infrared
 Spectrometer and Photometer* (NISP) of EUCLID, mimicking full sky-to-detector
@@ -115,7 +115,7 @@ Zemax 1st-order simulations for a nominal NISP configuration (courtesy
 J. Zoubian).
 
 .. raw:: html
-  :file: run_190315.html
+  :file: _static/run_190315.html
 
 .. raw:: html
 
@@ -133,16 +133,15 @@ J. Zoubian).
 
    \begin{figure}[htbp]
      \centering
-     \includegraphics{run_190315_fit}
+     \includegraphics{../../_static/run_190315_fit}
      \caption{\textbf{Figure:} Zemax sky-to-detector multi-order simulation of
        17×17 sources in the detector plane at 13 individual wavelengths
        (\emph{outlines symbols}) and minimally-adjusted optical model using
        nominal NISP parameters (\emph{large symbols}), along with 0th- and
        2nd-order predictions.}
-
    \end{figure}
 
-.. .. figure:: run_190315_fit.*
+.. .. figure:: _static/run_190315_fit.*
 .. 
 ..    **Figure:** Zemax sky-to-detector 1st-order simulation of 17×17 sources in
 ..    the detector plane at 13 individual wavelengths (*small symbols*) and
@@ -157,11 +156,11 @@ J. Zoubian).
    * input position (+0.4, +1.25) is missing the 1.85 µm wavelength
 
 References
-==========
+----------
 
-* :download:`SNIFS optical parametrization <SNFactory-SNIFS-02-002.pdf>`
+* :download:`SNIFS optical parametrization <_static/SNFactory-SNIFS-02-002.pdf>`
   (SNfactory Technical Documentation)
-* :download:`Redefinition of the blue grating <SNFactory-SNIFS-02-004.pdf>`
+* :download:`Redefinition of the blue grating <_static/SNFactory-SNIFS-02-004.pdf>`
   (SNfactory Technical Documentation)
 * `Euclid Mission Database <http://euclid.esac.esa.int/epdb/>`_
 * *NISP Technical Description* (EUCL-LAM-OTH-7-001)
@@ -180,8 +179,10 @@ Code documentation
    spectrogrism
    nisp
 
+:ref:`genindex`
+
 Example notebooks
------------------
+=================
 
 .. toctree::
    :maxdepth: 2
@@ -189,11 +190,4 @@ Example notebooks
    SNIFS
    NISP-S
 
-Indices and tables
-------------------
-
-* :ref:`genindex`
-
-.. * :ref:`modindex`
-.. * :ref:`search`
 

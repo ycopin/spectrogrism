@@ -43,7 +43,6 @@ NISP_R = OrderedDict([
     # Telescope
     ('telescope_flength', 24.5),          # Telescope focal length [m]
     # Grism
-    ('grism_on', True),                   # Is prism on the way?
     ('grism_dispersion', 9.8),            # Rough spectral dispersion [AA/px]
     ('grism_prism_material', 'FS'),       # Prism glass
     ('grism_grating_material', 'FS'),     # Grating resine
@@ -65,6 +64,9 @@ NISP_R.update([
     # Grism
     ('grism_prism_angle', 2.70 / S.RAD2DEG),  # Prism angle [rad]
     ('grism_grating_rho', 13.1),         # Grating groove density [lines/mm]
+    ('grism_prism_tiltx', 0),            # Prism x-tilt (around apex/groove axis) [rad]
+    ('grism_prism_tilty', 0),            # Prism y-tilt [rad]
+    ('grism_prism_tiltz', 0),            # Prism z-tilt (around optical axis) [rad]
     # Camera
     ('camera_flength', 957e-3),          # Focal length [m]
     ('camera_distortion', 29.6e-3),
@@ -80,7 +82,13 @@ NISP_R.update([
 class Zemax(object):
 
     """
-    Read results from Zemax simulations.
+    Zemax simulations, in spectroscopic or photometric mode.
+
+    Zemax configuration modes:
+
+    * 1: B-grism (NISP-S)
+    * 2, 3, 4: R-grisms (NISP-S)
+    * 5, 6, 7: Y, J, H (NISP-P)
     """
 
     colnames = """
@@ -90,31 +98,38 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
     def __init__(self, simulations):
         """
-        Initialize from :class:`Configuration`
-        `simulations` = {order: filename}.
+        Initialize from :class:`Configuration` `simulations` = {mode: filename}.
         """
 
         self.filenames = simulations
         self.name = simulations.name
-        # Orders (int) or undispersed bands (str)
-        self.orders = [ order
-                        for order in self.filenames.keys() if order != 'name' ]
+
+        # Observing modes
+        self.modes = [ mode for mode in self.filenames.keys() if mode != 'name' ]
+        # Dispersion orders (int modes)
+        self.orders = [ mode for mode in self.modes if isinstance(mode, int) ]
+        # Undispersed photometric bands (str modes)
+        self.bands = [ mode for mode in self.modes if isinstance(mode, basestring) ]
+
         # Load datasets from filenames and minimally check consistency
-        # {order: ndarray}
-        self.data = self.load_multiorder_sims(self.filenames)
-        # Convert to DetectorPositions (internally structured in orders)
-        self.positions = self.detector_positions(orders=self.orders)
+        # {mode: ndarray}
+        self.data = self.load_multimode_sims(self.filenames)
+
+        # Convert to DetectorPositions (internally structured in modes)
+        self.positions = self.detector_positions(modes=self.modes)
         # Load simulation configuration
-        self.simcfg = self.get_simcfg(orders=self.orders)
+        self.simcfg = self.get_simcfg(modes=self.modes)
 
     def __str__(self):
 
-        s = "Simulations: {}".format(self.name)
+        s = "Simulations: {}, {} modes".format(self.name, len(self.modes))
         for order in self.orders:
             s += "\n  Order #{}: {}".format(order, self.filenames[order])
+        for band in self.bands:
+            s += "\n  Band   {}: {}".format(band, self.filenames[band])
 
         # All orders are supposed to share the same input values
-        ref_data = self.data[self.orders[0]]
+        ref_data = self.data[self.modes[0]]
         waves = set(ref_data['wave'])
         xin = set(ref_data['xindeg'])
         yin = set(ref_data['yindeg'])
@@ -126,30 +141,25 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
         return s
 
-    def load_multiorder_sims(self, simulations):
+    def load_multimode_sims(self, simulations):
         """
-        Load multi-order simulations from :class:`Configuration`
-        `simulations` = {order: filename}.
+        Load multi-mode simulations from :class:`Configuration`
+        `simulations` = {mode: filename}.
         """
 
-        data = { order: self.load_simulation(simulations[order])
-                 for order in self.orders }
+        data = { mode: self.load_simulation(simulations[mode]) for mode in self.modes }
 
         # Consistency checks on configurations, wavelengths and input positions
-        if len(self.orders) > 1:
-            ref_order = self.orders[0]
-            for order in self.orders[1:]:
-                assert (data[order]['confNb'] ==
-                        data[ref_order]['confNb']).all(), \
-                    "ConfNb of orders {} and {} are incompatible".format(
-                        order, ref_order)
+        if len(self.modes) > 1:
+            ref_mode = self.modes[0]
+            for mode in self.modes[1:]:
                 # Beware: all files are not sorted the same way
                 for name in ('wave', 'xindeg', 'yindeg'):
-                    vector = N.sort(N.unique(data[order][name]))
-                    ref_vector = N.sort(N.unique(data[ref_order][name]))
+                    vector = N.sort(N.unique(data[mode][name]))
+                    ref_vector = N.sort(N.unique(data[ref_mode][name]))
                     assert N.allclose(vector, ref_vector), \
-                    "'{}' of orders {} and {} are incompatible".format(
-                        name, order, ref_order)
+                        "'{}' of modes {} and {} are incompatible".format(
+                            name, mode, ref_mode)
 
         return data
 
@@ -172,13 +182,13 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
         return data
 
-    def get_simcfg(self, orders=None):
+    def get_simcfg(self, modes=None):
         """Generate a :class:`SimConfig` corresponding to simulation."""
 
-        if orders is None:
-            orders = self.orders
+        if modes is None:
+            modes = self.modes
 
-        ref_data = self.data[orders[0]]
+        ref_data = self.data[modes[0]]
         # Unique wavelengths [m]
         waves = N.unique(ref_data['wave']) * 1e-6   # [m]
         # Unique input coordinates
@@ -189,30 +199,30 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         simcfg = S.Configuration([('name', self.name),
                                   ('wave_npx', len(waves)),
                                   ('wave_range', [min(waves), max(waves)]),
-                                  ('orders', orders),
+                                  ('modes', modes),
                                   ('input_coords', coords)
                                   ])
 
         return S.SimConfig(simcfg)
 
-    def detector_positions(self, orders=None, colname='psfcmm'):
+    def detector_positions(self, modes=None, colname='psfcmm'):
         """Convert simulation to :class:`DetectorPositions` in mm."""
 
-        if orders is None:
-            orders = self.orders
+        if modes is None:
+            modes = self.modes
 
         if 'mm' not in colname:  # Input coords are supposed to be in mm
             raise NotImplementedError()
 
-        ref_order = orders[0]
-        data = self.data[ref_order]
+        ref_mode = modes[0]
+        data = self.data[ref_mode]
         waves = N.sort(N.unique(data['wave']))
         coords = N.unique(data['xindeg'] + 1j * data['yindeg'])  # [deg]
 
-        positions = S.DetectorPositions(waves * 1e-6,   # Wavelengths in [m]
+        positions = S.DetectorPositions(waves * 1e-6,            # Wavelengths in [m]
                                         name=self.name)
-        for order in orders:
-            data = self.data[order]
+        for mode in modes:
+            data = self.data[mode]
             for xy in coords:                  # Loop over input positions [deg]
                 select = (N.isclose(data['xindeg'], xy.real) &
                           N.isclose(data['yindeg'], xy.imag))
@@ -221,7 +231,7 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
                 # Sanity check
                 assert N.allclose(subdata['wave'], waves)
                 dpos = subdata['x' + colname] + 1j * subdata['y' + colname]   # [mm]
-                positions.add_spectrum(xy / S.RAD2DEG, dpos * 1e-3, order=order)
+                positions.add_spectrum(xy / S.RAD2DEG, dpos * 1e-3, mode=mode)
 
         return positions
 
@@ -242,14 +252,13 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
         return ax
 
-    def plot_output(self, ax=None, orders=None, subsampling=0,
-                    **kwargs):
+    def plot_output(self, ax=None, modes=None, subsampling=0, **kwargs):
         """Plot output (detector) coordinates [mm]."""
 
-        if orders is None:
-            orders = self.orders
+        if modes is None:
+            modes = self.modes
 
-        ax = self.positions.plot(ax=ax, orders=orders,
+        ax = self.positions.plot(ax=ax, modes=modes,
                                  subsampling=subsampling, **kwargs)
 
         title = "Simulation '{}'".format(self.name)
@@ -259,25 +268,25 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
         return ax
 
-    def plot_offsets(self, model, ax=None, order=1, nwaves=3):
+    def plot_offsets(self, other_positions, ax=None, mode=1, nwaves=3):
         """Plot output (detector) coordinate offsets [px]."""
 
         if ax is None:
             fig = P.figure()
             ax = fig.add_subplot(1, 1, 1,
                                  xlabel="x [mm]", ylabel="y [mm]")
-            title = "Simulation '{}', order #{}\nposition offsets [px]".format(
-                self.name, order)
+            title = "Simulation '{}', {}{}\nposition offsets [px]".format(
+                self.name, "order #" if isinstance(mode, int) else "band {}", mode)
             ax.set_title(title)
             ax.set_aspect('equal', adjustable='datalim')
         else:
             fig = None          # Will serve as a flag
 
         # Wavelength-indexed DataFrames
-        zpos = self.positions.spectra[order] / 1e-3   # [mm]
-        spos = model.spectra[order] / 1e-3            # [mm]
-        dpos = spos - zpos                            # Position offset [mm]
-        dpos /= model.spectrograph.detector.pxsize / 1e-3  # [px]
+        zpos = self.positions.spectra[mode] / 1e-3   # [mm]
+        spos = other_positions.spectra[mode] / 1e-3        # [mm]
+        dpos = spos - zpos                           # Position offset [mm]
+        dpos /= other_positions.spectrograph.detector.pxsize / 1e-3  # [px]
 
         # Create wavelength vector
         waves = zpos.index
@@ -310,101 +319,86 @@ if __name__ == '__main__':
 
     simulations = S.Configuration([
         ("name", "Zemax"),
-        (1, "Zemax/run_190315.dat"),           # 1st-order simulation
-        (0, "Zemax/run_011115_conf2_o0.dat"),  # 0th-order simulation
-        (2, "Zemax/run_161115_conf2_o2.dat"),  # 2nd-order simulation
+        (1, "Zemax/run_190315.dat"),            # 1st-order dispersed simulation
+        (0, "Zemax/run_011115_conf2_o0.dat"),   # 0th-order dispersed simulation
+        (2, "Zemax/run_161115_conf2_o2.dat"),   # 2nd-order dispersed simulation
+        ('J', "Zemax/run_071215_conf6_J.dat"),  # J-band undispersed simulation
     ])
 
     subsampling = 3             # Subsample output plot
     adjust = False              # Test optical parameter adjustment
     embed_html = False          # Generate MPLD3 figure
+    plot_offset = False         # Offset plots
 
     # Zemax simulations
     zmx = Zemax(simulations)
     print(zmx)
-
-    # ax = zmx.plot_input()
-
-    kwargs = dict(s=20, edgecolor='k', linewidths=1)  # Outlined symbols
-    ax = zmx.plot_output(orders=zmx.orders, subsampling=subsampling, **kwargs)
 
     # Optical modeling
     optcfg = S.OptConfig(NISP_R)  # Optical configuration (default NISP)
     simcfg = zmx.get_simcfg()     # Simulation configuration
 
     spectro = S.Spectrograph(optcfg,
-                             grism_on=optcfg.get('grism_on', True),
                              telescope=S.Telescope(optcfg))
     print(spectro)
 
-    # Test
-    try:
-        spectro.test(simcfg, verbose=False)
-    except AssertionError as err:
-        warnings.warn("Spectrograph test:", str(err))
-    else:
-        print("Spectrograph test: OK")
+    # Tests
+    print(" Spectrograph round-trip test ".center(70, '-'))
+    for mode in simcfg.get('modes', (1, 0, 2)):
+        try:
+            spectro.test(simcfg, mode=mode, verbose=False)
+        except AssertionError as err:
+            warnings.warn("Order #{}: {}".format(mode, str(err)))
+        else:
+            print("{}{}: OK".format(
+                "Order #" if isinstance(mode, int) else "Band ", mode))
 
-    # Optical model
-    model = spectro.model(simcfg, orders=zmx.orders)
+    # Spectroscopic modes ==============================
 
-    # Compute RMS on 1st-order positions
-    rms = zmx.positions.compute_rms(model, order=1)
-    print("1st-order RMS = {:.4f} mm = {:.2f} px".format(
-        rms / 1e-3, rms / spectro.detector.pxsize))
+    spositions = spectro.predict_positions(simcfg, modes=zmx.orders)
+    spositions.assert_compatibility(zmx.positions, modes=zmx.orders)
+
+    # Plots
+    # ax = zmx.plot_input()
+
+    kwargs = dict(s=20, edgecolor='k', linewidths=1)  # Outlined symbols
+    ax = zmx.plot_output(modes=zmx.orders, subsampling=subsampling, **kwargs)
 
     # kwargs = dict(edgecolor=None, facecolor='none', linewidths=1)  # Open symbols
     kwargs = {}                      # Default
-    if not adjust:                   # Out-of-the-box optical model
-        model.plot(ax=ax, zorder=0,  # Draw below Zemax
-                   orders=(1,),
-                   subsampling=subsampling,
-                   label="{} #1 (RMS={:.1f} px)".format(
-                       model.name, rms / spectro.detector.pxsize),
-                   **kwargs)
-        if 0 in zmx.orders:
-            # Compute RMS on 0th-order positions
-            rms = zmx.positions.compute_rms(model, order=0)
-            print("0th-order RMS = {:.4f} mm = {:.2f} px".format(
-                rms / 1e-3, rms / spectro.detector.pxsize))
-            model.plot(ax=ax, zorder=0,  # Draw below Zemax
-                       orders=(0,), blaze=True,
-                       subsampling=subsampling,
-                       label="{} #0 (RMS={:.1f} px)".format(
-                           model.name, rms / spectro.detector.pxsize),
-                       **kwargs)
-        if 2 in zmx.orders:
-            # Compute RMS on 2nd-order positions
-            rms = zmx.positions.compute_rms(model, order=2)
-            print("2nd-order RMS = {:.4f} mm = {:.2f} px".format(
-                rms / 1e-3, rms / spectro.detector.pxsize))
-            model.plot(ax=ax, zorder=0,  # Draw below Zemax
-                       orders=(2,), blaze=True,
-                       subsampling=subsampling,
-                       label="{} #2 (RMS={:.1f} px)".format(
-                           model.name, rms / spectro.detector.pxsize),
-                       **kwargs)
-    else:                           # Optical adjustment
+    for order in zmx.orders:
+        # Compute RMS on current order positions
+        rms = zmx.positions.compute_rms(spositions, mode=order)
+        print("Order #{} RMS = {:.4f} mm = {:.2f} px".format(
+            order, rms / 1e-3, rms / spectro.detector.pxsize))
+        spositions.plot(ax=ax, zorder=0,  # Draw below Zemax
+                        modes=(order,), blaze=(order != 1),
+                        subsampling=subsampling,
+                        label="{} #{} (RMS={:.1f} px)".format(
+                            spositions.name, order, rms / spectro.detector.pxsize),
+                        **kwargs)
+
+    if adjust:                           # Optical adjustment
         result = spectro.adjust(
             zmx.positions, simcfg, tol=1e-4,
             optparams=[
-                'detector_dx', 'detector_dy',
-                # 'telescope_flength',
-                # 'collimator_flength', 'collimator_distortion',
-                # 'camera_flength', 'camera_distortion',
+                'detector_dy',  # 'detector_dx',
+                'grism_prism_tiltz',
+                # 'telescope_flength', 'collimator_flength', 'camera_flength',
+                # 'collimator_distortion', 'camera_distortion',
             ])
         if result.success:          # Adjusted model
-            model2 = spectro.model(simcfg)
-            model2.plot(ax=ax, zorder=0,
-                        subsampling=subsampling,
-                        label="Adjusted {} (RMS={:.1f} px)".format(
-                            model.name,
-                            result.rms / spectro.detector.pxsize))
+            spositions_fit = spectro.predict_positions(simcfg)
+            spositions_fit.plot(ax=ax, zorder=0,
+                                subsampling=subsampling,
+                                label="Adjusted {} (RMS={:.1f} px)".format(
+                                    spositions.name,
+                                    result.rms / spectro.detector.pxsize))
 
     ax.axis([-100, +100, -100, +100])               # [mm]
     ax.set_aspect('equal', adjustable='datalim')
     # ax.set_axisbg('0.9')
-    ax.legend(fontsize='small', frameon=True, framealpha=0.5)
+    ax.legend(loc='upper left', fontsize='small', frameon=True, framealpha=0.5)
 
     if embed_html:
         try:
@@ -413,7 +407,32 @@ if __name__ == '__main__':
             warnings.warn("MPLD3 is not available, cannot export to HTML.")
 
     # Position offset quiver plots
-    for order in zmx.orders:
-        ax = zmx.plot_offsets(model, order=order)
+    if plot_offset:
+        for order in zmx.orders:
+            ax = zmx.plot_offsets(spositions, mode=order)
+
+    # Imagery modes ==============================
+
+    ppositions = spectro.predict_positions(simcfg, modes=zmx.bands)
+    ppositions.assert_compatibility(zmx.positions, modes=zmx.bands)
+
+    kwargs = dict(s=20, edgecolor='k', linewidths=1)  # Outlined symbols
+    ax = zmx.plot_output(modes=zmx.bands, **kwargs)
+
+    kwargs = {}                 # Default
+    for band in zmx.bands:
+        # Compute RMS on positions
+        rms = zmx.positions.compute_rms(ppositions, mode=band)
+        print("Band {} RMS = {:.4f} mm = {:.2f} px".format(
+            band, rms / 1e-3, rms / spectro.detector.pxsize))
+        ppositions.plot(ax=ax, zorder=0,  # Draw below Zemax
+                        modes=(band,),
+                        label="{} {} (RMS={:.1f} px)".format(
+                            ppositions.name, band, rms / spectro.detector.pxsize),
+                        **kwargs)
+
+    ax.axis([-100, +100, -100, +100])               # [mm]
+    ax.set_aspect('equal', adjustable='datalim')
+    ax.legend(loc='upper left', fontsize='small', frameon=True, framealpha=0.5)
 
     P.show()
