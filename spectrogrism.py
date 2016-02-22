@@ -13,6 +13,8 @@ Generic utilities for modeling grism-based spectrograph.
    OptConfig
    SimConfig
    Spectrum
+   rect2pol
+   pol2rect
    PointSource
    DetectorPositions
    LateralColor
@@ -115,7 +117,7 @@ class Configuration(OrderedDict):
 
     conftype = 'Configuration'            #: Configuration type
 
-    def __init__(self, adict={}):
+    def __init__(self, adict):
         """Initialize from dictionary `adict`."""
 
         OrderedDict.__init__(self, adict)
@@ -170,10 +172,11 @@ class Configuration(OrderedDict):
         """Pretty-printing in ipython notebooks."""
 
         html = ["<table>"]
-        html.append("<caption>{0} {1}</caption>".format(self.conftype, self.name))
+        html.append("<caption>{0} {1}</caption>"
+                    .format(self.conftype, self.name))
         for key in self.keys():
-            html.append("<tr><td><pre>{0}</pre></td><td>{1}</td></tr>".format(
-                key, self[key]))
+            html.append("<tr><td><pre>{0}</pre></td><td>{1}</td></tr>"
+                        .format(key, self[key]))
         html.append("</table>")
         return ''.join(html)
 
@@ -291,84 +294,55 @@ class Spectrum(object):
         return cls(wavelengths, fluxes, name=name)
 
 
-class Coordinates2D(complex):
+def rect2pol(position):
+    r"""
+    Convert complex position :math:`x + jy` into modulus :math:`r` and
+    phase :math:`\phi`.
 
-    """
-    A complex-derived 2D-coordinate system, for linear positions or
-    angular directions.
-
-    .. autosummary::
-
-       to_polar
-       from_polar
+    :param complex position: 2D-position(s) :math:`x + jy`
+    :return: (r, phi) [rad]
     """
 
-    def __new__(cls, *args, **kwargs):
-
-        return complex.__new__(cls, *args, **kwargs)
-
-    def to_polar(self):
-        u"""Convert 2D-coords from cartesian (x, y) to polar (r, φ)."""
-
-        return N.abs(self), N.angle(self)
-
-    @classmethod
-    def from_polar(cls, r, phi):
-        u"""Convert 2D-coords from polar (r, φ) to cartesian (x, y)."""
-
-        return Coordinates2D(r * N.exp(1j * phi))
+    return N.absolute(position), N.angle(position)
 
 
-class Direction2D(Coordinates2D):
+def pol2rect(r, phi):
+    r"""
+    Convert modulus :math:`r` and phase :math:`\phi` into complex position(s)
+    :math:`x + jy = r\exp(j\phi)`.
 
-    """
-    A 2D-angular direction.
+    :param float r: module(s)
+    :param float phi: phase(s) [rad]
+    :return: complex 2D-position(s)
     """
 
-    def __str__(self):
-
-        z = self * RAD2MIN
-        return "{:+.1f} × {:+.1f} arcmin".format(z.real, z.imag)
-
-
-class Position2D(Coordinates2D):
-
-    """
-    A 2D-linear position.
-    """
-
-    def __str__(self):
-
-        z = self / 1e-3                    # [mm]
-        return "{:+.1f} × {:+.1f} mm".format(z.real, z.imag)
+    return r * N.exp(1j * phi)
 
 
 class PointSource(object):
 
     """
-    A :class:`Spectrum` associated to a :class:`Position2D` or
-    :class:`Direction2D`.
+    A :class:`Spectrum` associated to a complex 2D-position or direction.
     """
 
     def __init__(self, coords, spectrum=None, **kwargs):
         """
         Initialize from position/direction and spectrum.
 
-        :param complex coords: source
-                               :class:`Position2D` [m] or :class:`Direction2D` [rad]
+        :param complex coords: source complex 2D-position [m]
+            or direction [rad]
         :param Spectrum spectrum: source spectrum (default to standard spectrum)
         :param kwargs: propagated to :func:`Spectrum.default()` constructor
         """
 
-        assert isinstance(coords, Coordinates2D)
-        self.coords = coords                     #: Position/direction
+        self.coords = coords            #: 2D-position/direction
 
         if spectrum is None:
             spectrum = Spectrum.default(**kwargs)
         else:
             assert isinstance(spectrum, Spectrum), \
                 "spectrum should be a Spectrum, not {}".format(type(spectrum))
-        self.spectrum = spectrum                 #: Spectrum
+        self.spectrum = spectrum        #: Spectrum
 
     def __str__(self):
 
@@ -378,7 +352,7 @@ class PointSource(object):
 class DetectorPositions(object):
 
     """
-    A container for :class:`Position2D` on the detector.
+    A container for complex 2D-positions on the detector.
 
     A Pandas-based container for (complex) positions in the detector plane,
     namely a mode-keyed dictionary of :class:`pandas.DataFrame` including
@@ -463,7 +437,7 @@ class DetectorPositions(object):
         :param bool blaze: encode the blaze function in the marker size
         :param int subsampling: sub-sample coordinates and wavelengths
         :param kwargs: options propagated to
-                       :func:`matplotlib.pyplot.Axes.scatter`
+            :func:`matplotlib.pyplot.Axes.scatter`
         :return: :class:`matplotlib.pyplot.Axes`
         """
 
@@ -528,7 +502,8 @@ class DetectorPositions(object):
                     positions = df[xy].values / 1e-3  # Complex positions [mm]
                 except KeyError:
                     warnings.warn(
-                        "Source {} is unknown, skipped".format(str_position(xy)))
+                        "Source {} is unknown, skipped"
+                        .format(str_position(xy)))
                     continue
 
                 if subsampling > 1:
@@ -552,7 +527,8 @@ class DetectorPositions(object):
         Assert compatibility in wavelengths and positions with other instance.
 
         :param DetectorPositions other: other instance to be confronted
-        :param list modes: observing modes (dispersion order or photometric band)
+        :param list modes: observing modes (dispersion order or
+            photometric band)
         :raise AssertionError: incompatible instance
         """
 
@@ -566,7 +542,8 @@ class DetectorPositions(object):
         for mode in modes:
             assert mode in self.spectra and mode in other.spectra
             assert N.allclose(self.get_coords(mode), other.get_coords(mode)), \
-                "{!r} and {!r} have incompatible input coordinates for mode {}".format(
+                "{!r} and {!r} have incompatible " \
+                "input coordinates for mode {}".format(
                     self.name, other.name, mode)
 
     def compute_offset(self, other, mode=1):
@@ -600,7 +577,8 @@ class DetectorPositions(object):
            (see :func:`assert_compatibility`).
         """
 
-        return (self.compute_offset(other, mode=mode).abs() ** 2).values.mean() ** 0.5
+        return ((self.compute_offset(other, mode=mode).abs() ** 2)
+                .values.mean() ** 0.5)
 
 
 class LateralColor(object):
@@ -744,8 +722,6 @@ class CameraOrCollimator(object):
 
     .. autosummary::
 
-       rect2pol
-       pol2rect
        invert_camcoll
     """
 
@@ -783,31 +759,6 @@ class CameraOrCollimator(object):
             s += '\n  {}'.format(self.lcolor)
 
         return s
-
-    @staticmethod
-    def rect2pol(position):
-        r"""
-        Convert position :math:`x + jy` into modulus :math:`r` and
-        phase :math:`\phi`.
-
-        :param complex position: 2D-position(s) :math:`x + jy`
-        :return: (r, phi) [rad]
-        """
-
-        return N.absolute(position), N.angle(position)
-
-    @staticmethod
-    def pol2rect(r, phi):
-        r"""
-        Convert modulus :math:`r` and phase :math:`\phi` into position
-        :math:`x + jy = r\exp(j\phi)`.
-
-        :param numpy.ndarray r: modulus
-        :param numpy.ndarray phi: phase [rad]
-        :return: 2D-position
-        """
-
-        return r * N.exp(1j * phi)
 
     @staticmethod
     def invert_camcoll(y, e, b):
@@ -903,13 +854,13 @@ class Collimator(CameraOrCollimator):
         :rtype: complex
         """
 
-        r, phi = self.rect2pol(position)  # Modulus [m] and phase [rad]
-        rr = r / self.flength             # Normalized radius
+        r, phi = rect2pol(position)     # Modulus [m] and phase [rad]
+        rr = r / self.flength           # Normalized radius
         tmp = (self.distortion * rr ** 2 +
                self.lcolor.amplitude(wavelengths) / gamma)
         tantheta = rr * (1 + tmp)
 
-        return self.pol2rect(tantheta, phi + N.pi)  # Direction
+        return pol2rect(tantheta, phi + N.pi)  # Direction
 
     def backward(self, direction, wavelength, gamma):
         """
@@ -918,13 +869,13 @@ class Collimator(CameraOrCollimator):
         See :func:`Collimator.forward` for parameters.
         """
 
-        tantheta, phi = self.rect2pol(direction)
+        tantheta, phi = rect2pol(direction)
 
-        rovf = self.invert_camcoll(tantheta,
-                                   self.distortion,
-                                   1 + self.lcolor.amplitude(wavelength) / gamma)
+        rovf = self.invert_camcoll(
+            tantheta, self.distortion,
+            1 + self.lcolor.amplitude(wavelength) / gamma)
 
-        return self.pol2rect(rovf * self.flength, phi + N.pi)  # Position
+        return pol2rect(rovf * self.flength, phi + N.pi)  # Position
 
 
 class Camera(CameraOrCollimator):
@@ -985,11 +936,12 @@ class Camera(CameraOrCollimator):
         :return: 2D-position [m]
         """
 
-        tantheta, phi = self.rect2pol(direction)
+        tantheta, phi = rect2pol(direction)
         rovf = (1 + self.distortion * tantheta ** 2 +
                 self.lcolor.amplitude(wavelengths)) * tantheta
 
-        return self.pol2rect(rovf * self.flength, phi + N.pi)  # Flipped position
+        return pol2rect(
+            rovf * self.flength, phi + N.pi)  # Flipped position
 
     def backward(self, position, wavelength):
         """
@@ -998,13 +950,13 @@ class Camera(CameraOrCollimator):
         See :func:`Camera.forward` for parameters.
         """
 
-        r, phi = self.rect2pol(position)  # Modulus [m] and phase [rad]
+        r, phi = rect2pol(position)     # Modulus [m] and phase [rad]
 
         tantheta = self.invert_camcoll(r / self.flength,
                                        self.distortion,
                                        1 + self.lcolor.amplitude(wavelength))
 
-        return self.pol2rect(tantheta, phi + N.pi)  # Flipped direction
+        return pol2rect(tantheta, phi + N.pi)  # Flipped direction
 
 
 class Telescope(Camera):
@@ -1030,11 +982,11 @@ class Telescope(Camera):
                     err.args[0]))
 
         # Initialize from Camera parent class
-        super(Camera, self).__init__(flength, distortion, lcolor=None)
+        super(Telescope, self).__init__(flength, distortion, lcolor=None)
 
     def __str__(self):
 
-        return "Telescope:  {}".format(super(Camera, self).__str__())
+        return "Telescope:  {}".format(super(Telescope, self).__str__())
 
 
 class Prism(object):
@@ -1084,7 +1036,8 @@ class Prism(object):
     @property
     def tiltx(self):
         """
-        Expose prism x-tilt [rad], rotation around the prism apex/grating grooves.
+        Expose prism x-tilt [rad], rotation around the prism apex/grating
+        grooves.
         """
 
         return self.tilts[0]
@@ -1168,7 +1121,7 @@ class Prism(object):
         :rtype: 3-tuple
         """
 
-        x1, y1, z1 = xyz
+        x1, y1, _ = xyz
         x2 = x1 * n1 / n2
         y2 = y1 * n1 / n2
         z2 = N.sqrt(1 - (x2 ** 2 + y2 ** 2))
@@ -1224,7 +1177,7 @@ class Grating(object):
 
         n = self.material.index(wavelengths)  # Index of refraction
 
-        x, y, z = xyz
+        x, y, _ = xyz
         xp = x * n
         yp = y * n + order * wavelengths * self.rho / 1e-3
         zp = N.sqrt(1 - (xp ** 2 + yp ** 2))
@@ -1246,7 +1199,7 @@ class Grating(object):
 
         n = self.material.index(wavelength)  # Index of refraction
 
-        xp, yp, zp = xyz
+        xp, yp, _ = xyz
         x = xp / n
         y = (yp - order * wavelength * self.rho / 1e-3) / n
         z = N.sqrt(1 - (x ** 2 + y ** 2))
@@ -1351,7 +1304,7 @@ class Grism(object):
         :type: 3-tuple
         """
 
-        tantheta, phi = CameraOrCollimator.rect2pol(direction)
+        tantheta, phi = rect2pol(direction)
         tan2 = tantheta ** 2
         costheta = N.sqrt(1 / (1 + tan2))
         sintheta = N.sqrt(tan2 / (1 + tan2))
@@ -1374,7 +1327,7 @@ class Grism(object):
         tantheta = N.hypot(x, y) / z
         phi = N.arctan2(y, x)
 
-        return CameraOrCollimator.pol2rect(tantheta, phi)
+        return pol2rect(tantheta, phi)
 
     def forward(self, direction, wavelengths, order=1):
         """
@@ -1624,8 +1577,8 @@ class Spectrograph(object):
 
         def yoverf(l):
 
-            sinbeta = (order * self.grism.grating.rho / 1e-3 * l -
-                       self.grism.prism.material.index(l) *
+            sinbeta = (order * self.grism.grating.rho / 1e-3 * l
+                       - self.grism.prism.material.index(l) *
                        N.sin(self.grism.prism.angle))
 
             return N.tan(N.arcsin(sinbeta))
@@ -1710,11 +1663,7 @@ class Spectrograph(object):
         """
 
         # Test source
-        if self.telescope:
-            input = Direction2D(coords)
-        else:
-            input = Position2D(coords)
-        source = PointSource(input,
+        source = PointSource(coords,
                              Spectrum.default(simu.get_waves(self.config)))
         wavelengths = source.spectrum.wavelengths
 
@@ -1821,7 +1770,7 @@ class Spectrograph(object):
 
         # Input source (coordinates will be updated later on)
         waves = simcfg.get_waves(self.config)
-        source = PointSource(Position2D(0), waves=waves)
+        source = PointSource(0, waves=waves)
         wavelengths = source.spectrum.wavelengths
 
         # Simulation parameters
@@ -1875,8 +1824,8 @@ class Spectrograph(object):
                           'collimator_flength',
                           'camera_flength'], tol=1e-6):
         """
-        Adjust optical parameters to match target detector positions, according to
-        simulation configuration.
+        Adjust optical parameters to match target detector positions,
+        according to simulation configuration.
 
         :param DetectorPositions positions: target positions
         :param SimConfig simcfg: simulation configuration
@@ -1971,7 +1920,7 @@ def str_direction(direction):
     .. Warning:: work on a single (complex) direction.
     """
 
-    # tantheta, phi = CameraOrCollimator.rect2pol(direction)
+    # tantheta, phi = rect2pol(direction)
     # return "{:+.2f} x {:+.2f} arcmin".format(
     #     N.arctan(tantheta)*RAD2MIN, phi*RAD2MIN)
 
@@ -2020,7 +1969,7 @@ def dump_bokeh(fig, filename):
 
 def plot_SNIFS(optcfg=OptConfig(SNIFS_R),
                simcfg=SimConfig(SNIFS_SIMU),
-               test=True):
+               test=True, verbose=False):
     """
     Test-case w/ SNIFS-like configuration.
     """
@@ -2039,7 +1988,7 @@ def plot_SNIFS(optcfg=OptConfig(SNIFS_R),
         print(" Spectrograph round-trip test ".center(70, '-'))
         for mode in simcfg['modes']:
             try:
-                spectro.test(simcfg, mode=mode, verbose=False)
+                spectro.test(simcfg, mode=mode, verbose=verbose)
             except AssertionError as err:
                 warnings.warn("Order #{}: {}".format(mode, str(err)))
             else:
@@ -2059,7 +2008,7 @@ def plot_SNIFS(optcfg=OptConfig(SNIFS_R),
 
 if __name__ == '__main__':
 
-    ax = plot_SNIFS(test=True)
+    ax = plot_SNIFS(test=True, verbose=True)
 
     embed_html = False
     if embed_html:

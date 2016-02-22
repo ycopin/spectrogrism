@@ -26,7 +26,7 @@ try:
     import seaborn
     seaborn.set_style("darkgrid",
                       # {'xtick.major.size': 6, 'xtick.minor.size': 3,
-                      #  'ytick.major.size': 6, 'ytick.minor.size': 3}
+                      #  'ytick.major.size': 6, 'ytick.minor.size': 3},
                       )
 except ImportError:
     pass
@@ -401,8 +401,9 @@ if __name__ == '__main__':
     ax.legend(loc='upper left', fontsize='small', frameon=True, framealpha=0.5)
 
     if embed_html:
+        figname = zmx.name + '_mpld3.html'
         try:
-            S.dump_mpld3(ax, zmx.filename.replace('.dat', '.html'))
+            S.dump_mpld3(ax, figname)
         except ImportError:
             warnings.warn("MPLD3 is not available, cannot export to HTML.")
 

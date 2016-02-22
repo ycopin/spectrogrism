@@ -2,8 +2,8 @@
 .. raw:: html
 
    <a href="https://github.com/ycopin/spectrogrism">
-     <img style="position: fixed; top: 0; right: 0; border: 0;" 
-          src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png" 
+     <img style="position: fixed; top: 0; right: 0; border: 0;"
+          src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png"
           alt="Fork me on GitHub">
    </a>
 
@@ -18,13 +18,12 @@
    :linenothreshold: 3
 
 :Abstract: This module implements the spectrograph optical model used for the
-    *SuperNova Integral Field Spectrograph* [Lantz04]_ data-reduction pipeline,
-    and presented in [Copin00]_.  It provides a flexible chromatic mapping
-    between the input focal plane and the output detector plane, based on an
-    effective simplified ray-tracing model of the key optical
-    elements defining the spectrograph (collimator, prism, grating, camera),
-    described by a restricted number of physically-motivated distortion
-    parameters.
+*SuperNova Integral Field Spectrograph* [Lantz04]_ data-reduction pipeline, and
+presented in [Copin00]_.  It provides a flexible chromatic mapping between the
+input focal plane and the output detector plane, based on an effective
+simplified ray-tracing model of the key optical elements defining the
+spectrograph (collimator, prism, grating, camera), described by a restricted
+number of physically-motivated distortion parameters.
 
 Optical modeling
 ================
@@ -87,7 +86,7 @@ aberrations).  :class:`spectrogrism.Prism` includes 3D-tilts.
    \end{figure}
 
 .. .. figure:: _static/SNIFS-R.*
-.. 
+..
 ..    **Figure:** Modeling of 5×5 sources in the detector plane at 10 individual
 ..    wavelengths, using the SNIFS-R optical configuration.  Orders -1 (very top),
 ..    0 (undispersed), 1 (middle) and 2 (bottom) are represented.  The size of the
