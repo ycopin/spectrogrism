@@ -13,11 +13,10 @@ Generic utilities for modeling grism-based spectrograph.
    OptConfig
    SimConfig
    Spectrum
-   rect2pol
-   pol2rect
    PointSource
    DetectorPositions
    LateralColor
+   Distortion
    Material
    CameraOrCollimator
    Collimator
@@ -294,31 +293,6 @@ class Spectrum(object):
         return cls(wavelengths, fluxes, name=name)
 
 
-def rect2pol(position):
-    r"""
-    Convert complex position :math:`x + jy` into modulus :math:`r` and
-    phase :math:`\phi`.
-
-    :param complex position: 2D-position(s) :math:`x + jy`
-    :return: (r, phi) [rad]
-    """
-
-    return N.absolute(position), N.angle(position)
-
-
-def pol2rect(r, phi):
-    r"""
-    Convert modulus :math:`r` and phase :math:`\phi` into complex position(s)
-    :math:`x + jy = r\exp(j\phi)`.
-
-    :param float r: module(s)
-    :param float phi: phase(s) [rad]
-    :return: complex 2D-position(s)
-    """
-
-    return r * N.exp(1j * phi)
-
-
 class PointSource(object):
 
     """
@@ -502,8 +476,7 @@ class DetectorPositions(object):
                     positions = df[xy].values / 1e-3  # Complex positions [mm]
                 except KeyError:
                     warnings.warn(
-                        "Source {} is unknown, skipped"
-                        .format(str_position(xy)))
+                        "Source {} is unknown, skipped".format(xy))
                     continue
 
                 if subsampling > 1:
@@ -584,11 +557,11 @@ class DetectorPositions(object):
 class LateralColor(object):
 
     """
-    A description of lateral color chromatic distortion.
+    A description of transverse chromatic distortion.
 
-    The transverse chromatic aberration (so-called *lateral color*) occurs when
-    different wavelengths are focused at different positions in the focal
-    plane.
+    The transverse chromatic aberration (so-called *lateral color*)
+    occurs when different wavelengths are focused at different positions
+    in the focal plane.
 
     **Reference:** `Chromatic aberration
     <https://en.wikipedia.org/wiki/Chromatic_aberration>`_
@@ -600,7 +573,7 @@ class LateralColor(object):
 
     def __init__(self, wref, coeffs):
         """
-        Initialization from reference wavelength and lateral color coefficients.
+        Initialize from reference wavelength and lateral color coefficients.
 
         :param float wref: reference wavelength [m]
         :param list coeffs: lateral color coefficients
@@ -630,6 +603,187 @@ class LateralColor(object):
         else:
             return N.zeros_like(wavelengths)
 
+
+class RadialDistortion(object):
+
+    r"""
+    Brown-Conrady (achromatic) radial distortion model.
+
+    .. math::
+
+       x_d &= x_u \times (1 + K_1 r^2 + K_2 r^4 + \ldots) \\
+       &+ \left(P_2(r^2 + 2x_u^2) + 2P_1 x_u y_u\right)
+       (1 + P_3 r^2 + P_4 r^4 + \ldots) \\
+       y_d &= y_u \times (1 + K_1r^2 + K_2r^4 + \ldots) \\
+       &+ \left(P_1(r^2 + 2y_u^2) + 2P_2 x_u y_u\right)
+       (1 + P_3 r^2 + P_4 r^4 + \ldots)
+
+    where:
+
+    - :math:`x_u + j y_u` is the undistorted complex position,
+    - :math:`x_d + j y_d` is the distorted complex position,
+    - :math:`r^2 = (x_u - x_0)^2 + (y_u - y_0)^2`,
+    - :math:`x_0 + j y_0` is the complex center of distortion.
+
+    The K-coefficients (resp. P-coefficients) model the *radial*
+    (resp. *tangential*) distortion.
+
+    **Reference:** `Distortion
+    <https://en.wikipedia.org/wiki/Distortion_%28optics%29>`_
+
+    .. autosummary::
+
+       forward
+       backward
+    """
+
+    def __init__(self, center=0, Kcoeffs=[], Pcoeffs=[]):
+        """
+        Initialize from center of distortion and K- and P-coefficients.
+
+        :param complex center: center of distortion [m]
+        :param list Kcoeffs: radial distortion coefficients
+        :param list Pcoeffs: tangential distortion coefficients
+        """
+
+        self.center = complex(center)
+        self.Kcoeffs = N.array(Kcoeffs)
+        self.Pcoeffs = N.array(Pcoeffs)
+
+    def __str__(self):
+
+        s = "Distortion: center=({},{}), K-coeffs={}, P-coeffs={}".format(
+            self.x0, self.y0, self.Kcoeffs, self.Pcoeffs)
+
+        return s
+
+    @property
+    def x0(self):
+
+        return self.center.real
+
+    @x0.setter
+    def x0(self, x0):
+
+        self.center = x0 + 1j * self.center.imag
+
+    @property
+    def y0(self):
+
+        return self.center.imag
+
+    @y0.setter
+    def y0(self, y0):
+
+        self.center = self.center.real + 1j * y0
+
+    def forward(self, xyu):
+        """
+        Apply distortion to undistorted complex positions.
+        """
+
+        xy = xyu - self.center            # Relative complex positions
+        r2 = N.abs(xy) ** 2               # Undistorted radii squared
+        xu, yu = xy.real, xy.imag         # Undistorted coordinates
+
+        xd = N.copy(xu)                   # Distorted coordinates
+        yd = N.copy(yu)
+
+        if self.Kcoeffs.any():            # Radial distortion
+            # Polynomial in r²
+            polyk_r2 = N.poly1d(N.concatenate((self.Kcoeffs[::-1], [1.])))(r2)
+            xd *= polyk_r2
+            yd *= polyk_r2
+
+        if self.Pcoeffs.any():            # Tangential distortion
+            # 1st two P-coeffs (default to 0)
+            p1, p2 = N.concatenate((self.Pcoeffs[:2],
+                                    N.zeros(2 - len(self.Pcoeffs[:2]))))
+            # Polynomial in r²
+            polyp_r2 = N.poly1d(N.concatenate((self.Pcoeffs[:1:-1], [1.])))(r2)
+
+            xd += (p2 * (r2 + 2 * xu ** 2) + 2 * p1 * xu * yu) * polyp_r2
+            yd += (p1 * (r2 + 2 * yu ** 2) + 2 * p2 * xu * yu) * polyp_r2
+
+        return xd + 1j * yd               # Distorted complex positions
+
+    def backward(self, xyd):
+        """
+        Correct distortion from distorted complex positions.
+        """
+
+        import scipy.optimize as SO
+
+        def fun(x_y):
+            """
+            SO.root works on real functions only: we convert N complex
+            2D-positions to and fro 2N real vector.
+            """
+
+            x, y = N.array_split(x_y, 2)   # (2n,) ℝ → 2×(n,) ℝ
+            off = self.forward(x + 1j * y) - xyd   # (n,) ℂ
+            return N.concatenate((off.real, off.imag))   # (n,) ℂ → (2n,) ℝ
+
+        xd, yd = xyd.real, xyd.imag        # (n,) ℂ → 2×(n,) ℝ
+        result = SO.root(fun, N.concatenate((xd, yd)))
+
+        if not result.success:
+            raise RuntimeError("Cannot invert distortion.")
+
+        xu, yu = N.array_split(result.x, 2)
+
+        return xu + 1j * yu
+
+    @staticmethod
+    def position_grid(x):
+        """
+        Return square grid x × x of complex positions.
+        """
+
+        xx, yy = N.meshgrid(x, x)
+
+        return xx + 1j * yy
+
+    def plot(self, x=None, ax=None):
+
+        if x is None:
+            x = N.linspace(-1.5, 1.5, 13)   # Default
+
+        xyu = self.position_grid(x)       # Undistorted positions
+        xyd = self.forward(xyu)           # Distorted positions
+
+        if ax is None:
+            fig = P.figure()
+            title = "K-coeffs={}, ".format(self.Kcoeffs) \
+              if self.Kcoeffs.any() else ''
+            title += "P-coeffs={}".format(self.Pcoeffs) \
+              if self.Pcoeffs.any() else ''
+            ax = fig.add_subplot(1, 1, 1,
+                                 title=title,
+                                 xlabel="x", ylabel="y")
+
+        def plot_grid(ax, xy, label=None, color='k'):
+            for xx, yy in zip(xy.real, xy.imag):
+                ax.plot(xx, yy,
+                        color=color, marker='.', label=label)
+                if label:                 # Only one label
+                    label = None
+            for xx, yy in zip(xy.T.real, xy.T.imag):
+                ax.plot(xx, yy,
+                        color=color, marker='.', label='_')
+
+        # Undistorted positions
+        plot_grid(ax, xyu, label='Undistorted', color='0.8')
+        # Distorted grid
+        plot_grid(ax, xyd, label='Distorted', color='k')
+        # Center of distortion
+        ax.plot([self.center.real], [self.center.imag],
+                ls='None', marker='*', ms=10, label='Center')
+        ax.set_aspect('equal', adjustable='datalim')
+        ax.legend(loc='lower left', fontsize='small',
+                  frameon=True, framealpha=0.5)
+
+        return ax
 
 class Material(object):
 
@@ -673,7 +827,7 @@ class Material(object):
 
     def __init__(self, name):
         """
-        Initialize material from its `name`.
+        Initialize material from its name.
 
         :param str name: material name (should be in :attr:`Material.materials`)
         :raise KeyError: unknown material name
@@ -808,7 +962,7 @@ class Collimator(CameraOrCollimator):
 
     def __init__(self, config):
         """
-        Initialization from optical configuration `config`.
+        Initialize from optical configuration.
 
         :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
@@ -838,7 +992,7 @@ class Collimator(CameraOrCollimator):
 
         .. math::
 
-            \tan\theta = r/f \times (1 + e(r/f)^2 + a(\lambda)/\gamma)
+          \tan\theta = r/f \times (1 + e(r/f)^2 + a(\lambda)/\gamma)
 
         where:
 
@@ -895,7 +1049,7 @@ class Camera(CameraOrCollimator):
 
     def __init__(self, config):
         """
-        Initialization from optical configuration `config`.
+        Initialize from optical configuration.
 
         :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
@@ -967,7 +1121,7 @@ class Telescope(Camera):
 
     def __init__(self, config):
         """
-        Initialization from optical configuration dictionary.
+        Initialize from optical configuration.
 
         :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
@@ -1224,7 +1378,7 @@ class Grism(object):
 
     def __init__(self, config):
         """
-        Initialization from optical configuration.
+        Initialize from optical configuration.
 
         :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
@@ -1458,7 +1612,7 @@ class Detector(object):
 
     def __init__(self, config):
         """
-        Initialization from optical configuration `config`.
+        Initialize from optical configuration.
 
         :param OptConfig config: optical configuration
         :raise KeyError: missing configuration key
@@ -1902,30 +2056,29 @@ class Spectrograph(object):
 # Utility functions =======================================
 
 
-def str_position(position):
-    """
-    Pretty-printer of a complex position.
+def rect2pol(position):
+    r"""
+    Convert complex position :math:`x + jy` into modulus :math:`r` and
+    phase :math:`\phi`.
 
-    .. Warning:: work on a single (complex) position.
-    """
-
-    z = position / 1e-3         # [mm]
-    return "{:+.1f} × {:+.1f} mm".format(z.real, z.imag)
-
-
-def str_direction(direction):
-    """
-    Pretty-printer of a complex direction.
-
-    .. Warning:: work on a single (complex) direction.
+    :param complex position: 2D-position(s) :math:`x + jy`
+    :return: (r, phi) [rad]
     """
 
-    # tantheta, phi = rect2pol(direction)
-    # return "{:+.2f} x {:+.2f} arcmin".format(
-    #     N.arctan(tantheta)*RAD2MIN, phi*RAD2MIN)
+    return N.absolute(position), N.angle(position)
 
-    z = direction * RAD2MIN     # [arcmin]
-    return "{:+.1f} × {:+.1f} arcmin".format(z.real, z.imag)
+
+def pol2rect(r, phi):
+    r"""
+    Convert modulus :math:`r` and phase :math:`\phi` into complex position(s)
+    :math:`x + jy = r\exp(j\phi)`.
+
+    :param float r: module(s)
+    :param float phi: phase(s) [rad]
+    :return: complex 2D-position(s)
+    """
+
+    return r * N.exp(1j * phi)
 
 
 def dump_mpld3(ax, filename):
@@ -2008,7 +2161,7 @@ def plot_SNIFS(optcfg=OptConfig(SNIFS_R),
 
 if __name__ == '__main__':
 
-    ax = plot_SNIFS(test=True, verbose=True)
+    ax = plot_SNIFS(test=True, verbose=False)
 
     embed_html = False
     if embed_html:
