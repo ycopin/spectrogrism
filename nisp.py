@@ -63,10 +63,10 @@ NISP_R.update([
     ('collimator_distortion', 2.8e-3),
     # Grism
     ('grism_prism_angle', 2.70 / S.RAD2DEG),  # Prism angle [rad]
-    ('grism_grating_rho', 13.1),         # Grating groove density [lines/mm]
-    ('grism_prism_tiltx', 0),            # Prism x-tilt (around apex/groove axis) [rad]
-    ('grism_prism_tilty', 0),            # Prism y-tilt [rad]
-    ('grism_prism_tiltz', 0),            # Prism z-tilt (around optical axis) [rad]
+    ('grism_grating_rho', 13.1),   # Grating groove density [lines/mm]
+    ('grism_prism_tiltx', 0),  # Prism x-tilt (around apex/groove axis) [rad]
+    ('grism_prism_tilty', 0),  # Prism y-tilt [rad]
+    ('grism_prism_tiltz', 0),  # Prism z-tilt (around optical axis) [rad]
     # Camera
     ('camera_flength', 957e-3),          # Focal length [m]
     ('camera_distortion', 29.6e-3),
@@ -105,11 +105,14 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         self.name = simulations.name
 
         # Observing modes
-        self.modes = [ mode for mode in self.filenames.keys() if mode != 'name' ]
+        self.modes = [ mode
+                       for mode in self.filenames.keys() if mode != 'name' ]
         # Dispersion orders (int modes)
-        self.orders = [ mode for mode in self.modes if isinstance(mode, int) ]
+        self.orders = [ mode
+                        for mode in self.modes if isinstance(mode, int) ]
         # Undispersed photometric bands (str modes)
-        self.bands = [ mode for mode in self.modes if isinstance(mode, basestring) ]
+        self.bands = [ mode
+                       for mode in self.modes if isinstance(mode, basestring) ]
 
         # Load datasets from filenames and minimally check consistency
         # {mode: ndarray}
@@ -147,7 +150,8 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         `simulations` = {mode: filename}.
         """
 
-        data = { mode: self.load_simulation(simulations[mode]) for mode in self.modes }
+        data = { mode: self.load_simulation(simulations[mode])
+                 for mode in self.modes }
 
         # Consistency checks on configurations, wavelengths and input positions
         if len(self.modes) > 1:
@@ -219,7 +223,7 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         waves = N.sort(N.unique(data['wave']))
         coords = N.unique(data['xindeg'] + 1j * data['yindeg'])  # [deg]
 
-        positions = S.DetectorPositions(waves * 1e-6,            # Wavelengths in [m]
+        positions = S.DetectorPositions(waves * 1e-6,  # Wavelengths in [m]
                                         name=self.name)
         for mode in modes:
             data = self.data[mode]
@@ -230,7 +234,8 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
                 subdata = subdata[N.argsort(subdata['wave'])]  # Sort subdata
                 # Sanity check
                 assert N.allclose(subdata['wave'], waves)
-                dpos = subdata['x' + colname] + 1j * subdata['y' + colname]   # [mm]
+                dpos = (subdata['x' + colname] +
+                        1j * subdata['y' + colname])           # [mm]
                 positions.add_spectrum(xy / S.RAD2DEG, dpos * 1e-3, mode=mode)
 
         return positions
@@ -240,10 +245,10 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
         if ax is None:
             fig = P.figure()
-            ax = fig.add_subplot(1, 1, 1,
-                                 xlabel="x [deg]", ylabel="y [deg]",
-                                 title="Simulation '{}'\nInput positions".format(
-                                     self.name))
+            ax = fig.add_subplot(
+                1, 1, 1,
+                xlabel="x [deg]", ylabel="y [deg]",
+                title="Simulation '{}'\nInput positions".format(self.name))
 
         coords = self.simcfg.get_coords() * S.RAD2DEG  # [deg]
         ax.scatter(coords.real, coords.imag, **kwargs)
@@ -276,7 +281,8 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
             ax = fig.add_subplot(1, 1, 1,
                                  xlabel="x [mm]", ylabel="y [mm]")
             title = "Simulation '{}', {}{}\nposition offsets [px]".format(
-                self.name, "order #" if isinstance(mode, int) else "band {}", mode)
+                self.name, "order #" if isinstance(mode, int) else "band {}",
+                mode)
             ax.set_title(title)
             ax.set_aspect('equal', adjustable='datalim')
         else:
@@ -375,7 +381,8 @@ if __name__ == '__main__':
                         modes=(order,), blaze=(order != 1),
                         subsampling=subsampling,
                         label="{} #{} (RMS={:.1f} px)".format(
-                            spositions.name, order, rms / spectro.detector.pxsize),
+                            spositions.name, order,
+                            rms / spectro.detector.pxsize),
                         **kwargs)
 
     if adjust:                           # Optical adjustment
@@ -429,7 +436,8 @@ if __name__ == '__main__':
         ppositions.plot(ax=ax, zorder=0,  # Draw below Zemax
                         modes=(band,),
                         label="{} {} (RMS={:.1f} px)".format(
-                            ppositions.name, band, rms / spectro.detector.pxsize),
+                            ppositions.name, band,
+                            rms / spectro.detector.pxsize),
                         **kwargs)
 
     ax.axis([-100, +100, -100, +100])               # [mm]
