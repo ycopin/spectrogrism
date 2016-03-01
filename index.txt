@@ -17,14 +17,14 @@
 .. highlight:: python
    :linenothreshold: 3
 
-:Abstract: This module implements the spectrograph optical model used
-for the *SuperNova Integral Field Spectrograph* [Lantz04]_
-data-reduction pipeline, and presented in [Copin00]_.  It provides a
-flexible chromatic mapping between the input focal plane and the
-output detector plane, based on an effective simplified ray-tracing
-model of the key optical elements defining the spectrograph
-(collimator, prism, grating, camera), described by a restricted number
-of physically-motivated distortion parameters.
+:Abstract: This module implements the spectrograph optical model used for the
+           *SuperNova Integral Field Spectrograph* [Lantz04]_ data-reduction
+           pipeline, and presented in [Copin00]_.  It provides a flexible
+           chromatic mapping between the input focal plane and the output
+           detector plane, based on an effective simplified ray-tracing model
+           of the key optical elements defining the spectrograph (collimator,
+           prism, grating, camera), described by a restricted number of
+           physically-motivated distortion parameters.
 
 Optical modeling
 ================
@@ -97,11 +97,12 @@ aberrations).  :class:`spectrogrism.Prism` includes 3D-tilts.
 Positions and directions
 ------------------------
 
-* A 2D-position :math:`(x, y)` is encoded in complex number :math:`x + jy`.
-* A 2D-direction :math:`(\theta, \phi)` (where :math:`\theta` is the angle
+* A 2D-position :math:`(x, y)` is encoded in complex number :math:`x + jy =
+  r\,\exp(j\varphi)`.
+* A 2D-direction :math:`(\theta, \phi)` -- where :math:`\theta` is the angle
   between the optical axis :math:`Oz` and the propagation direction, and
-  :math:`\phi` the phase in the transverse plane :math:`(Oxy)`) is encoded in
-  complex number :math:`\tan(\theta) \exp(j\phi)`.
+  :math:`\phi` the phase in the transverse plane :math:`(Oxy)` -- is encoded in
+  complex number :math:`\tan(\theta)\,\exp(j\phi)`.
 * A 3D-direction is encoded by the coordinates of the unit-vector :math:`(x, y,
   z)`.
 

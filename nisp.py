@@ -349,7 +349,7 @@ if __name__ == '__main__':
     print(spectro)
 
     # Tests
-    print(" Spectrograph round-trip test ".center(70, '-'))
+    print(" Spectrograph round-trip test ".center(S.LINEWIDTH, '-'))
     for mode in simcfg.get('modes', (1, 0, 2)):
         try:
             spectro.test(simcfg, mode=mode, verbose=False)

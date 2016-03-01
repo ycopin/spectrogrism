@@ -15,8 +15,8 @@ Generic utilities for modeling grism-based spectrograph.
    Spectrum
    PointSource
    DetectorPositions
-   LateralColor
-   Distortion
+   ChromaticDistortion
+   GeometricDistortion
    Material
    CameraOrCollimator
    Collimator
@@ -40,6 +40,7 @@ __docformat__ = 'restructuredtext en'
 
 import warnings
 from collections import OrderedDict
+import cmath as C
 
 import numpy as N
 import pandas as PD
@@ -50,8 +51,9 @@ try:
 except ImportError:
     pass
 
-# Options
-N.set_printoptions(linewidth=100, threshold=10)
+# Print options
+LINEWIDTH = 70
+N.set_printoptions(linewidth=LINEWIDTH, threshold=10)
 PD.set_option("display.float.format",
               # PD.core.format.EngFormatter(accuracy=2, use_eng_prefix=True)
               lambda x: '{:g}'.format(x))
@@ -124,7 +126,7 @@ class Configuration(OrderedDict):
 
     def __str__(self):
 
-        s = [" {} {!r} ".format(self.conftype, self.name).center(70, '-')]
+        s = [" {} {!r} ".format(self.conftype, self.name).center(LINEWIDTH, '-')]
         s += [ '  {:20s}: {}'.format(str(key), self[key])
                for key in self.keys() ]
 
@@ -162,8 +164,8 @@ class Configuration(OrderedDict):
         with open(yamlname, 'r') as yamlfile:
             self = yaml.load(yamlfile)
 
-        print("Configuration {!r} loaded from {!r}".format(
-            self.name, yamlname))
+        print("Configuration {!r} loaded from {!r}"
+              .format(self.name, yamlname))
 
         return self
 
@@ -447,9 +449,10 @@ class DetectorPositions(object):
             try:
                 df = self.spectra[mode]
             except KeyError:
-                warnings.warn("{}{} not in '{}', skipped".format(
-                    "Order #" if isinstance(mode, int) else "Band ",
-                    mode, self.name))
+                warnings.warn("{}{} not in '{}', skipped"
+                              .format("Order #"
+                                      if isinstance(mode, int) else "Band ",
+                                      mode, self.name))
                 continue
 
             kwcopy = kwargs.copy()
@@ -554,60 +557,83 @@ class DetectorPositions(object):
                 .values.mean() ** 0.5)
 
 
-class LateralColor(object):
+class ChromaticDistortion(object):
 
     """
-    A description of transverse chromatic distortion.
+    A polynomial description of Transverse Chromatic Distortion.
 
-    The transverse chromatic aberration (so-called *lateral color*)
+    The Transverse Chromatic Aberration (so-called *lateral color*)
     occurs when different wavelengths are focused at different positions
     in the focal plane.
 
     **Reference:** `Chromatic aberration
     <https://en.wikipedia.org/wiki/Chromatic_aberration>`_
 
+    **See also:** Klein, Brauers & Aach, 2010, for a more detailed modeling of
+    Transversal Chromatic Aberrations.
+
     .. autosummary::
 
+       coeffs
        amplitude
     """
 
-    def __init__(self, wref, coeffs):
+    def __init__(self, wref=0, coeffs=[]):
         """
         Initialize from reference wavelength and lateral color coefficients.
 
-        :param float wref: reference wavelength [m]
+        .. math::
+
+           dr = \sum_{i=1}^N c_i (\lambda - \lambda_{\mathrm{ref}})^i
+
+        Note that :math:`c_0 = 0`.
+
+        :param float wref: reference wavelength
+            :math:`\lambda_{\mathrm{ref}}` [m]
         :param list coeffs: lateral color coefficients
+            :math:`[c_{i = 1, \ldots N}]`
         """
 
         self.wref = wref               #: Reference wavelength [m]
-        self.coeffs = N.array(coeffs)  #: Lateral color coefficients
+        self._poly = N.polynomial.Polynomial([0] + list(coeffs))
+
+    @property
+    def coeffs(self):
+        """Expose non-null coefficients (i.e. :math:`[c_{i \geq 1}]`)"""
+
+        return self._poly.coef[1:]  # ndarray
+
+    def __nonzero__(self):
+
+        return self.coeffs.any()
 
     def __str__(self):
 
-        return "Lateral color: lref={:.2f} µm, coeffs={}".format(
-            self.wref / 1e-6,
-            ', '.join( '{:+g}'.format(coeff) for coeff in self.coeffs))
+        if self.__nonzero__():
+            s = ("Chromatic distortion: lref={:.2f} µm, coeffs=[{}]"
+                 .format(self.wref / 1e-6,
+                         ', '.join( '{:+g}'.format(coeff)
+                                    for coeff in self.coeffs )))
+        else:
+            s = "Null chromatic distortion"
+
+        return s
 
     def amplitude(self, wavelengths):
         """
-        Compute amplitude of the lateral color chromatic distortion.
+        Compute amplitude of the (radial) chromatic distortion.
 
         :param numpy.ndarray wavelengths: wavelengths [mm]
-        :return: lateral color amplitude
+        :return: lateral color radial amplitude
         """
 
-        if len(self.coeffs):
-            return N.sum([ c * (wavelengths - self.wref) ** i
-                           for i, c in enumerate(self.coeffs, start=1) ],
-                         axis=0)
-        else:
-            return N.zeros_like(wavelengths)
+        return self._poly(wavelengths - self.wref)
 
 
-class RadialDistortion(object):
+class GeometricDistortion(object):
 
     r"""
-    Brown-Conrady (achromatic) radial distortion model.
+    Brown-Conrady (achromatic) distortion model.
 
     .. math::
 
@@ -628,7 +654,7 @@ class RadialDistortion(object):
     The K-coefficients (resp. P-coefficients) model the *radial*
     (resp. *tangential*) distortion.
 
-    **Reference:** `Distortion
+    **Reference:** `Optical distortion
     <https://en.wikipedia.org/wiki/Distortion_%28optics%29>`_
 
     .. autosummary::
@@ -647,13 +673,41 @@ class RadialDistortion(object):
         """
 
         self.center = complex(center)
-        self.Kcoeffs = N.array(Kcoeffs)
-        self.Pcoeffs = N.array(Pcoeffs)
+
+        # Radial polynom
+        self._polyk = N.polynomial.Polynomial([1] + list(Kcoeffs))
+        self.p1 = Pcoeffs[0] if len(Pcoeffs) >= 1 else 0
+        self.p2 = Pcoeffs[1] if len(Pcoeffs) >= 2 else 0
+        # Tangential polynom
+        self._polyp = N.polynomial.Polynomial([1] + list(Pcoeffs)[2:])
+
+    @property
+    def Kcoeffs(self):
+
+        return self._polyk.coef[1:]       # ndarray
+
+    @property
+    def Pcoeffs(self):
+
+        coeffs = [self.p1, self.p2] + self._polyp.coef[1:].tolist()  # list
+        if not any(coeffs):
+            coeffs = []
+
+        return N.array(coeffs)            # ndarray
+
+    def __nonzero__(self):
+
+        return self.Kcoeffs.any() or self.Pcoeffs.any()
 
     def __str__(self):
 
-        s = "Distortion: center=({},{}), K-coeffs={}, P-coeffs={}".format(
-            self.x0, self.y0, self.Kcoeffs, self.Pcoeffs)
+        if self.__nonzero__():
+            s = ("Geometric distortion: "
+                 "center=({:+.3f}, {:+.3f}) mm, K-coeffs={}, P-coeffs={}"
+                 .format(self.x0 / 1e-3, self.y0 / 1e-3,
+                         self.Kcoeffs, self.Pcoeffs))
+        else:
+            s = "Null geometric distortion"
 
         return s
 
@@ -691,19 +745,16 @@ class RadialDistortion(object):
 
         if self.Kcoeffs.any():            # Radial distortion
             # Polynomial in r²
-            polyk_r2 = N.poly1d(N.concatenate((self.Kcoeffs[::-1], [1.])))(r2)
+            polyk_r2 = self._polyk(r2)
             xd *= polyk_r2
             yd *= polyk_r2
 
         if self.Pcoeffs.any():            # Tangential distortion
-            # 1st two P-coeffs (default to 0)
-            p1, p2 = N.concatenate((self.Pcoeffs[:2],
-                                    N.zeros(2 - len(self.Pcoeffs[:2]))))
             # Polynomial in r²
-            polyp_r2 = N.poly1d(N.concatenate((self.Pcoeffs[:1:-1], [1.])))(r2)
-
-            xd += (p2 * (r2 + 2 * xu ** 2) + 2 * p1 * xu * yu) * polyp_r2
-            yd += (p1 * (r2 + 2 * yu ** 2) + 2 * p2 * xu * yu) * polyp_r2
+            polyp_r2 = self._polyp(r2)
+            two_xuyu = 2 * xu * yu
+            xd += (self.p2 * (r2 + 2 * xu ** 2) + self.p1 * two_xuyu) * polyp_r2
+            yd += (self.p1 * (r2 + 2 * yu ** 2) + self.p2 * two_xuyu) * polyp_r2
 
         return xd + 1j * yd               # Distorted complex positions
 
@@ -720,44 +771,49 @@ class RadialDistortion(object):
             2D-positions to and fro 2N real vector.
             """
 
-            x, y = N.array_split(x_y, 2)   # (2n,) ℝ → 2×(n,) ℝ
-            off = self.forward(x + 1j * y) - xyd   # (n,) ℂ
-            return N.concatenate((off.real, off.imag))   # (n,) ℂ → (2n,) ℝ
+            x, y = N.array_split(x_y, 2)                  # (2n,) ℝ → 2×(n,) ℝ
+            off = self.forward(x + 1j * y) - xyd.ravel()  # (n,) ℂ
+            return N.concatenate((off.real, off.imag))    # (n,) ℂ → (2n,) ℝ
 
-        xd, yd = xyd.real, xyd.imag        # (n,) ℂ → 2×(n,) ℝ
+        xyd = N.atleast_1d(xyd)
+        xd, yd = xyd.real.ravel(), xyd.imag.ravel()       # → 2×(n,) ℝ
         result = SO.root(fun, N.concatenate((xd, yd)))
 
         if not result.success:
-            raise RuntimeError("Cannot invert distortion.")
+            raise RuntimeError("GeometricDistortion model is not invertible.")
 
-        xu, yu = N.array_split(result.x, 2)
+        xu, yu = N.array_split(result.x, 2)               # → 2×(n,) ℝ
 
-        return xu + 1j * yu
+        return (xu + 1j * yu).reshape(xyd.shape).squeeze()
 
-    @staticmethod
-    def position_grid(x):
+    def plot(self, xy=None, ax=None):
         """
-        Return square grid x × x of complex positions.
+        Plot distortions for a 2D-grid of complex positions.
         """
 
-        xx, yy = N.meshgrid(x, x)
+        if xy is None:
+            x = N.linspace(-1.5, 1.5, 13)   # Default grid
+            xx, yy = N.meshgrid(x, x)
+            xy = xx + 1j * yy               # Undistorted positions
+        else:
+            assert N.ndim(xy) == 2, "Invalid input grid"
 
-        return xx + 1j * yy
+        xyd = self.forward(xy)              # Distorted positions
 
-    def plot(self, x=None, ax=None):
-
-        if x is None:
-            x = N.linspace(-1.5, 1.5, 13)   # Default
-
-        xyu = self.position_grid(x)       # Undistorted positions
-        xyd = self.forward(xyu)           # Distorted positions
+        # Test
+        try:
+            assert N.allclose(self.backward(xyd), xy)
+        except RuntimeError as err:
+            warnings.warn(err)
+        except AssertionError:
+            warnings.warn("GeometricDistortion inversion is invalid.")
 
         if ax is None:
             fig = P.figure()
             title = "K-coeffs={}, ".format(self.Kcoeffs) \
-              if self.Kcoeffs.any() else ''
+                if self.Kcoeffs.any() else ''
             title += "P-coeffs={}".format(self.Pcoeffs) \
-              if self.Pcoeffs.any() else ''
+                if self.Pcoeffs.any() else ''
             ax = fig.add_subplot(1, 1, 1,
                                  title=title,
                                  xlabel="x", ylabel="y")
@@ -773,7 +829,7 @@ class RadialDistortion(object):
                         color=color, marker='.', label='_')
 
         # Undistorted positions
-        plot_grid(ax, xyu, label='Undistorted', color='0.8')
+        plot_grid(ax, xy, label='Undistorted', color='0.8')
         # Distorted grid
         plot_grid(ax, xyd, label='Distorted', color='k')
         # Center of distortion
@@ -784,6 +840,7 @@ class RadialDistortion(object):
                   frameon=True, framealpha=0.5)
 
         return ax
+
 
 class Material(object):
 
@@ -842,8 +899,7 @@ class Material(object):
 
     def __str__(self):
 
-        return u"Material: {}, n(1 µm)={:.3f}".format(
-            self.name, self.index(1e-6))
+        return u"Material: {}, n(1 µm)={:.3f}".format(self.name, self.index(1e-6))
 
     def index(self, wavelengths):
         r"""
@@ -879,38 +935,37 @@ class CameraOrCollimator(object):
        invert_camcoll
     """
 
-    def __init__(self, flength, distortion, lcolor):
+    def __init__(self, flength, gdist=None, cdist=None):
         """
         Initialize the optical component from optical parameters.
 
         :param float flength: focal length [m]
-        :param float distortion: r² distortion coefficient
-        :param lcolor: :class:`LateralColor`
-
-        .. Note:: We restrict here the model to a quadratic radial geometric
-           distortion, responsible for barrel and pincushion distortions.
-           Higher order radial distortions or tangential distortions could be
-           implemented if needed.
-
-           **Reference:** `Distortion
-           <https://en.wikipedia.org/wiki/Distortion_%28optics%29>`_
+        :param GeometricDistortion gdist: geometric distortion
+        :param ChromaticDistortion cdist: chromatic distortion (lateral color)
         """
 
-        if lcolor is None:
-            lcolor = LateralColor(0, [])   # Null lateral color
-        else:
-            assert isinstance(lcolor, LateralColor), \
-                "lcolor should be a LateralColor"
+        self.flength = float(flength)              #: Focal length [m]
 
-        self.flength = flength        #: Focal length [m]
-        self.distortion = distortion  #: r² distortion coefficient
-        self.lcolor = lcolor          #: Lateral color
+        if gdist is not None:
+            assert isinstance(gdist, GeometricDistortion), \
+                "gdist should be a GeometricDistortion."
+        else:
+            gdist = GeometricDistortion()   # Null geometric distortion
+
+        if cdist is not None:
+            assert isinstance(cdist, ChromaticDistortion), \
+                "cdist should be a ChromaticDistortion."
+        else:
+            cdist = ChromaticDistortion()       # Null lateral color
+
+        self.gdist = gdist      #: Geometric distortion
+        self.cdist = cdist      #: Chromatic distortion (lateral color)
 
     def __str__(self):
 
-        s = "f={:.1f} m, e={:+.3f}".format(self.flength, self.distortion)
-        if self.lcolor is not None and len(self.lcolor.coeffs):
-            s += '\n  {}'.format(self.lcolor)
+        s = "f={:.1f} m".format(self.flength)
+        s += '\n  {}'.format(self.gdist)
+        s += '\n  {}'.format(self.cdist)
 
         return s
 
@@ -970,15 +1025,18 @@ class Collimator(CameraOrCollimator):
 
         try:
             flength = config['collimator_flength']
-            distortion = config.get('collimator_distortion', 0)
-            lcolor = LateralColor(config.wref,
-                                  config.get('collimator_lcolor_coeffs', []))
+            dist_K1 = config.get('collimator_distortion', 0)
+            lcoeffs = config.get('collimator_lcolor_coeffs', [])
         except KeyError as err:
             raise KeyError(
-                "Invalid configuration file: missing key {!r}".format(
-                    err.args[0]))
+                "Invalid configuration file: missing key {!r}"
+                .format(err.args[0]))
+        else:
+            gdist = GeometricDistortion(0, [dist_K1])
+            cdist = ChromaticDistortion(config.wref, lcoeffs)
 
-        super(Collimator, self).__init__(flength, distortion, lcolor)
+        super(Collimator, self).__init__(flength, gdist, cdist)
+        self.gdist_K1 = dist_K1  # Backward compatibility
 
     def __str__(self):
 
@@ -1008,11 +1066,15 @@ class Collimator(CameraOrCollimator):
         :rtype: complex
         """
 
+        warnings.warn(
+            "{}.forward is not yet adapted to generic GeometricDistortion"
+            .format(self.__class__.__name__), DeprecationWarning)
+
         r, phi = rect2pol(position)     # Modulus [m] and phase [rad]
         rr = r / self.flength           # Normalized radius
-        tmp = (self.distortion * rr ** 2 +
-               self.lcolor.amplitude(wavelengths) / gamma)
-        tantheta = rr * (1 + tmp)
+        tantheta = rr * (1 +
+                         self.gdist_K1 * rr ** 2 +
+                         self.cdist.amplitude(wavelengths) / gamma)
 
         return pol2rect(tantheta, phi + N.pi)  # Direction
 
@@ -1023,11 +1085,14 @@ class Collimator(CameraOrCollimator):
         See :func:`Collimator.forward` for parameters.
         """
 
+        warnings.warn(
+            "{}.backward is not yet adapted to generic GeometricDistortion"
+            .format(self.__class__.__name__), DeprecationWarning)
+
         tantheta, phi = rect2pol(direction)
 
-        rovf = self.invert_camcoll(
-            tantheta, self.distortion,
-            1 + self.lcolor.amplitude(wavelength) / gamma)
+        rovf = self.invert_camcoll(tantheta, self.gdist_K1,
+                                   1 + self.cdist.amplitude(wavelength) / gamma)
 
         return pol2rect(rovf * self.flength, phi + N.pi)  # Position
 
@@ -1057,15 +1122,18 @@ class Camera(CameraOrCollimator):
 
         try:
             flength = config['camera_flength']
-            distortion = config.get('camera_distortion', 0)
-            lcolor = LateralColor(config.wref,
-                                  config.get('camera_lcolor_coeffs', []))
+            dist_K1 = config.get('camera_distortion', 0)
+            lcoeffs = config.get('camera_lcolor_coeffs', [])
         except KeyError as err:
             raise KeyError(
-                "Invalid configuration file: missing key {!r}".format(
-                    err.args[0]))
+                "Invalid configuration file: missing key {!r}"
+                .format(err.args[0]))
+        else:
+            gdist = GeometricDistortion(0, [dist_K1])
+            cdist = ChromaticDistortion(config.wref, lcoeffs)
 
-        super(Camera, self).__init__(flength, distortion, lcolor)
+        super(Camera, self).__init__(flength, gdist, cdist)
+        self.gdist_K1 = dist_K1  # Backward compatibility
 
     def __str__(self):
 
@@ -1090,9 +1158,14 @@ class Camera(CameraOrCollimator):
         :return: 2D-position [m]
         """
 
+        warnings.warn(
+            "{}.forward is not yet adapted to generic GeometricDistortion"
+            .format(self.__class__.__name__), DeprecationWarning)
+
         tantheta, phi = rect2pol(direction)
-        rovf = (1 + self.distortion * tantheta ** 2 +
-                self.lcolor.amplitude(wavelengths)) * tantheta
+        rovf = (1 +
+                self.gdist_K1 * tantheta ** 2 +
+                self.cdist.amplitude(wavelengths)) * tantheta
 
         return pol2rect(
             rovf * self.flength, phi + N.pi)  # Flipped position
@@ -1104,11 +1177,14 @@ class Camera(CameraOrCollimator):
         See :func:`Camera.forward` for parameters.
         """
 
-        r, phi = rect2pol(position)     # Modulus [m] and phase [rad]
+        warnings.warn(
+            "{}.backward is not yet adapted to generic GeometricDistortion"
+            .format(self.__class__.__name__), DeprecationWarning)
 
+        r, phi = rect2pol(position)     # Modulus [m] and phase [rad]
         tantheta = self.invert_camcoll(r / self.flength,
-                                       self.distortion,
-                                       1 + self.lcolor.amplitude(wavelength))
+                                       self.gdist_K1,
+                                       1 + self.cdist.amplitude(wavelength))
 
         return pol2rect(tantheta, phi + N.pi)  # Flipped direction
 
@@ -1129,18 +1205,21 @@ class Telescope(Camera):
 
         try:
             flength = config['telescope_flength']
-            distortion = config.get('telescope_distortion', 0)
+            dist_K1 = config.get('telescope_distortion', 0)
         except KeyError as err:
             raise KeyError(
-                "Invalid configuration file: missing key {!r}".format(
-                    err.args[0]))
+                "Invalid configuration file: missing key {!r}"
+                .format(err.args[0]))
+        else:
+            gdist = GeometricDistortion(0, [dist_K1])
 
-        # Initialize from Camera parent class
-        super(Telescope, self).__init__(flength, distortion, lcolor=None)
+        # Initialize from CameraOrCollimator parent class
+        super(Camera, self).__init__(flength, gdist, cdist=None)
+        self.gdist_K1 = dist_K1  # Backward compatibility
 
     def __str__(self):
 
-        return "Telescope:  {}".format(super(Telescope, self).__str__())
+        return "Telescope:  {}".format(super(Camera, self).__str__())
 
 
 class Prism(object):
@@ -1234,7 +1313,7 @@ class Prism(object):
         """
 
         # Rotation in the complex plane
-        p = (N.array(x) + 1j * N.array(y)) * N.exp(1j * theta)
+        p = (N.array(x) + 1j * N.array(y)) * C.exp(1j * theta)
 
         return (p.real, p.imag)
 
@@ -1393,8 +1472,8 @@ class Grism(object):
             blaze = config.get('grism_grating_blaze', 0)
         except KeyError as err:
             raise KeyError(
-                "Invalid configuration file: missing key {!r}".format(
-                    err.args[0]))
+                "Invalid configuration file: missing key {!r}"
+                .format(err.args[0]))
 
         self.prism = Prism(angle, Material(prism_material), tilts=tilts)
         self.grating = Grating(rho, Material(grating_material), blaze)
@@ -1629,7 +1708,7 @@ class Detector(object):
         Expose complex offset `dx + 1j*dy` [m].
         """
 
-        return complex(self.dx, self.dy)
+        return self.dx + 1j * self.dy     # Faster than complex(dx, dy)
 
     @dxdy.setter
     def dxdy(self, dxdy):
@@ -1639,26 +1718,29 @@ class Detector(object):
     def __str__(self):
 
         return """Detector: pxsize={:.0f} µm
-  offset=({:+.3f}, {:+.3f}) mm, angle={:.1f} deg""".format(
+  Offset=({:+.3f}, {:+.3f}) mm, angle={:.1f} deg""".format(
             self.pxsize / 1e-6,
             self.dx / 1e-3, self.dy / 1e-3, self.angle * RAD2DEG)
 
     def forward(self, positions):
         """Forward propagation to detector."""
 
-        return (positions + self.dxdy) * N.exp(1j * self.angle)
+        return (positions + self.dxdy) * C.exp(1j * self.angle)
 
     def backward(self, positions):
         """Backward propagation from detector."""
 
-        return positions / N.exp(1j * self.angle) - self.dxdy
+        return positions / C.exp(1j * self.angle) - self.dxdy
 
 
 class Spectrograph(object):
 
     """
-    A :class:`Collimator`, a :class:`Grism`, a :class:`Camera` and a
-    :class:`Detector`, plus an optional :class:`Telescope`.
+    A collimated spectrograph.
+
+    A :class:`Collimator`, a :class:`Grism` in a collimated beam, a
+    :class:`Camera` and a :class:`Detector`, plus an optional
+    :class:`Telescope`.
 
     .. autosummary::
 
@@ -1695,7 +1777,7 @@ class Spectrograph(object):
 
     def __str__(self):
 
-        s = [" Spectrograph ".center(70, '-')]
+        s = [" Spectrograph ".center(LINEWIDTH, '-')]
         if self.telescope:
             s.append(self.telescope.__str__())
         s.append(self.collimator.__str__())
@@ -1704,8 +1786,9 @@ class Spectrograph(object):
         s.append(self.detector.__str__())
         s.append("Spectrograph magnification: {0.gamma:.3f}".format(self))
         wref = self.config.wref
-        s.append("Central dispersion: {:.2f} AA/px at {:.2f} µm".format(
-            self.dispersion(wref) / 1e-10 * self.detector.pxsize, wref / 1e-6))
+        s.append("Central dispersion: {:.2f} AA/px at {:.2f} µm"
+                 .format(self.dispersion(wref) / 1e-10 * self.detector.pxsize,
+                         wref / 1e-6))
 
         return '\n'.join(s)
 
@@ -1731,14 +1814,14 @@ class Spectrograph(object):
 
         def yoverf(l):
 
-            sinbeta = (order * self.grism.grating.rho / 1e-3 * l
-                       - self.grism.prism.material.index(l) *
+            sinbeta = (order * self.grism.grating.rho / 1e-3 * l -
+                       self.grism.prism.material.index(l) *
                        N.sin(self.grism.prism.angle))
 
             return N.tan(N.arcsin(sinbeta))
 
-        dydl = (derivative(yoverf, wavelength, dx=wavelength * eps) *
-                self.camera.flength)
+        dydl = self.camera.flength * derivative(yoverf, wavelength,
+                                                dx=wavelength * eps)
 
         return 1 / dydl
 
@@ -1753,7 +1836,7 @@ class Spectrograph(object):
         """
 
         assert isinstance(source, PointSource), \
-            "source should be a PointSource"
+            "source should be a PointSource."
 
         wavelengths = source.spectrum.wavelengths
 
@@ -1822,7 +1905,7 @@ class Spectrograph(object):
         wavelengths = source.spectrum.wavelengths
 
         if verbose:
-            print(" SPECTROGRAPH TEST ".center(70, '='))
+            print(" SPECTROGRAPH TEST ".center(LINEWIDTH, '='))
             print("Input source:", source)
             print("Wavelengths [µm]:", wavelengths / 1e-6)
 
@@ -1920,7 +2003,7 @@ class Spectrograph(object):
         # Rotation in the input plane
         angle = simcfg.get('input_angle', 0)   # [rad]
         if angle:
-            coords *= N.exp(1j * angle)
+            coords *= C.exp(1j * angle)
 
         # Input source (coordinates will be updated later on)
         waves = simcfg.get_waves(self.config)
@@ -1962,14 +2045,14 @@ class Spectrograph(object):
                 try:
                     obj = getattr(obj, attr)
                 except AttributeError:
-                    raise KeyError("Unknown attribute '{}' in {}".format(
-                        attr, obj.__class__.__name__))
+                    raise KeyError("Unknown attribute '{}' in {}"
+                                   .format(attr, obj.__class__.__name__))
             attr = attrs[-1]
             try:
                 getattr(obj, attr)
             except AttributeError:
-                raise KeyError("Unknown final attribute '{}' in {}".format(
-                    attr, obj.__class__.__name__))
+                raise KeyError("Unknown final attribute '{}' in {}"
+                               .format(attr, obj.__class__.__name__))
             else:
                 setattr(obj, attr, value)
 
@@ -1993,7 +2076,7 @@ class Spectrograph(object):
 
         import scipy.optimize as SO
 
-        print(" SPECTROGRAPH ADJUSTMENT ".center(70, '='))
+        print(" SPECTROGRAPH ADJUSTMENT ".center(LINEWIDTH, '='))
 
         # Simulation parameters
         if modes is None:
@@ -2005,7 +2088,7 @@ class Spectrograph(object):
         except KeyError:
             raise KeyError("Unknown optical parameter '{}'".format(name))
 
-        print(" Initial parameters ".center(70, '-'))
+        print(" Initial parameters ".center(LINEWIDTH, '-'))
         for name, value in zip(optparams, guessparams):
             print("  {:20s}: {}".format(name, value))
 
@@ -2017,12 +2100,12 @@ class Spectrograph(object):
         rmss = []
         for mode in modes:
             rms = positions.compute_rms(mpositions, mode=mode)
-            print("Mode {} RMS: {} mm = {} px".format(
-                mode, rms / 1e-3, rms / self.detector.pxsize))
+            print("Mode {} RMS: {} mm = {} px"
+                  .format(mode, rms / 1e-3, rms / self.detector.pxsize))
             rmss.append(rms)
         rms = (sum( rms ** 2 for rms in rmss ) / len(modes)) ** 0.5
-        print("Total RMS: {} mm = {} px".format(
-            rms / 1e-3, rms / self.detector.pxsize))
+        print("Total RMS: {} mm = {} px"
+              .format(rms / 1e-3, rms / self.detector.pxsize))
 
         def objfun(pars, positions):
             """Sum of squared mean offset position."""
@@ -2043,13 +2126,13 @@ class Spectrograph(object):
                              options={'disp': True, 'xtol': tol})
         print("Minimization: {}".format(result.message))
         if result.success:
-            print(" Adjusted parameters ".center(70, '-'))
+            print(" Adjusted parameters ".center(LINEWIDTH, '-'))
             for name, value in zip(optparams, N.atleast_1d(result.x)):
                 print("  {:20s}: {}".format(name, value))
             # Compute final RMS
             result.rms = (result.fun / len(modes)) ** 0.5  # [m]
-            print("  RMS: {} mm = {} px".format(
-                result.rms / 1e-3, result.rms / self.detector.pxsize))
+            print("  RMS: {} mm = {} px"
+                  .format(result.rms / 1e-3, result.rms / self.detector.pxsize))
 
         return result
 
@@ -2138,7 +2221,7 @@ def plot_SNIFS(optcfg=OptConfig(SNIFS_R),
     print(simcfg)
 
     if test:
-        print(" Spectrograph round-trip test ".center(70, '-'))
+        print(" Spectrograph round-trip test ".center(LINEWIDTH, '-'))
         for mode in simcfg['modes']:
             try:
                 spectro.test(simcfg, mode=mode, verbose=verbose)

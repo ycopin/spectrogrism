@@ -32,7 +32,7 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.todo',
     # 'sphinx.ext.coverage',
-    'sphinx.ext.mathjax',
+    'sphinx.ext.mathjax',       # or pngmath
     'sphinx.ext.viewcode',
     'sphinx.ext.autosummary',
     'sphinx.ext.inheritance_diagram',
@@ -41,7 +41,7 @@ extensions = [
 ]
 
 # Autodoc configuration
-autoclass_content = "both"              # Insert __init__ method docstring
+autoclass_content = "both"              # Insert class and __init__ docstrings
 autodoc_member_order = "bysource"       # Keep source order
 
 # Using mocks for libraries that depend on C modules
