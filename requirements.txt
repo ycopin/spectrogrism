@@ -1,6 +1,5 @@
 numpy
-pandas
+scipy
 matplotlib
-pyyaml
+astropy
 nbsphinx
-#ipykernel

@@ -1,7 +1,7 @@
 *~
 *.pyc
-/_build/
 /build/
-/spectrogrism.egg-info/
 /dist/
-.ipynb_checkpoints/
+/spectrogrism.egg-info/
+/doc/_build/
+/doc/.ipynb_checkpoints/

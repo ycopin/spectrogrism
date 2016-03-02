@@ -1,0 +1,195 @@
+.. Fork-me ribbon
+.. raw:: html
+
+   <a href="https://github.com/ycopin/spectrogrism">
+     <img style="position: fixed; top: 0; right: 0; border: 0;"
+          src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png"
+          alt="Fork me on GitHub">
+   </a>
+
+=====================================================================
+                  Grism-based Spectrograph Modeling
+=====================================================================
+
+:Version: |version| of |today|
+:Author: Yannick Copin <y.copin@ipnl.in2p3.fr>
+
+.. highlight:: python
+   :linenothreshold: 3
+
+:Abstract: This module implements the spectrograph optical model used for the
+           *SuperNova Integral Field Spectrograph* [Lantz04]_ data-reduction
+           pipeline, and presented in [Copin00]_.  It provides a flexible
+           chromatic mapping between the input focal plane and the output
+           detector plane, based on an effective simplified ray-tracing model
+           of the key optical elements defining the spectrograph (collimator,
+           prism, grating, camera), described by a restricted number of
+           physically-motivated distortion parameters.
+
+Optical modeling
+================
+
+The model only handles the *geometrical* part of the light propagation through
+the spectrograph, i.e. provides a mapping between a wavelength and a position
+in the entrance focal plane to a position in the detector plane (at the output
+focal plane).  It is therefore assumed all the PSF and scattered light effects
+(related to focus, axial chromatic aberrations, diffusion, etc.) are modeled
+independently.
+
+Optical elements
+----------------
+
+The :class:`spectrogrism.Spectrograph` model includes optical elements between
+the input focal plane and the output detector plane:
+
+- an optional :class:`spectrogrism.Telescope`, which converts a direction in
+  the sky into a position in the focal plane;
+- a :class:`spectrogrism.Collimator`, which converts a position (in the focal
+  plane) into a direction;
+- a :class:`spectrogrism.Grism` (an association of a
+  :class:`spectrogrism.Prism` and a :class:`spectrogrism.Grating`), which
+  converts a direction into another direction depending on wavelength and
+  dispersion order;
+- a :class:`spectrogrism.Camera`, which converts a direction into a position
+  (in the detector plane);
+- a :class:`spectrogrism.Detector`, which actually project positions onto the
+  translated and rotated detector.
+
+Both :class:`spectrogrism.Collimator` and :class:`spectrogrism.Camera` include
+geometric quadratic radial distortion and lateral colors (transverse chromatic
+aberrations).  :class:`spectrogrism.Prism` includes 3D-tilts.
+
+.. raw:: html
+  :file: _static/SNIFS-R.html
+
+.. raw:: html
+
+   <p class="caption">
+     <span class="caption-text">
+       <strong>Figure:</strong> Modeling of 5×5 sources in the detector
+       plane at 10 individual wavelengths, using the SNIFS-R optical
+       configuration.  Orders -1 (very top), 0 (undispersed), 1
+       (middle) and 2 (bottom) are represented.  The size of the
+       symbol somehow encodes the blaze function of the spectrograph.
+     </span>
+   </p>
+
+.. raw:: latex
+
+   \begin{figure}[htbp]
+     \centering
+     \includegraphics{../../_static/SNIFS-R}
+     \caption{\textbf{Figure:} Modeling of 5×5 sources in the detector
+       plane at 10 individual wavelengths, using the SNIFS-R optical
+       configuration.  Orders -1 (very top), 0 (undispersed), 1
+       (middle) and 2 (bottom) are represented.  The size of the
+       symbol somehow encodes the blaze function of the spectrograph.}
+   \end{figure}
+
+.. .. figure:: _static/SNIFS-R.*
+..
+..    **Figure:** Modeling of 5×5 sources in the detector plane at 10 individual
+..    wavelengths, using the SNIFS-R optical configuration.  Orders -1 (very top),
+..    0 (undispersed), 1 (middle) and 2 (bottom) are represented.  The size of the
+..    symbol somehow encodes the blaze function of the spectrograph.
+
+
+Positions and directions
+------------------------
+
+* A 2D-position :math:`(x, y)` is encoded in complex number :math:`x + jy =
+  r\,\exp(j\varphi)`.
+* A 2D-direction :math:`(\theta, \phi)` -- where :math:`\theta` is the angle
+  between the optical axis :math:`Oz` and the propagation direction, and
+  :math:`\phi` the phase in the transverse plane :math:`(Oxy)` -- is encoded in
+  complex number :math:`\tan(\theta)\,\exp(j\phi)`.
+* A 3D-direction is encoded by the coordinates of the unit-vector :math:`(x, y,
+  z)`.
+
+
+Near Infrared Spectrometer and Photometer (NISP)
+------------------------------------------------
+
+The :mod:`spectrogrism` optical model is used to simulate the *Near Infrared
+Spectrometer and Photometer* (NISP) of EUCLID, mimicking full sky-to-detector
+Zemax 1st-order simulations for a nominal NISP configuration (courtesy
+J. Zoubian).
+
+.. raw:: html
+  :file: _static/run_190315.html
+
+.. raw:: html
+
+   <p class="caption">
+     <span class="caption-text">
+       <strong>Figure:</strong> Zemax sky-to-detector multi-order simulation of
+       17×17 sources in the detector plane at 13 individual wavelengths
+       (<em>outlined symbols</em>) and minimally 1st-order-adjusted optical
+       model using nominal NISP parameters (<em>filled symbols</em>), along
+       with associated 0th- and 2nd-order predictions.
+     </span>
+   </p>
+
+.. raw:: latex
+
+   \begin{figure}[htbp]
+     \centering
+     \includegraphics{../../_static/run_190315_fit}
+     \caption{\textbf{Figure:} Zemax sky-to-detector multi-order simulation of
+       17×17 sources in the detector plane at 13 individual wavelengths
+       (\emph{outlines symbols}) and minimally-adjusted optical model using
+       nominal NISP parameters (\emph{large symbols}), along with 0th- and
+       2nd-order predictions.}
+   \end{figure}
+
+.. .. figure:: _static/run_190315_fit.*
+.. 
+..    **Figure:** Zemax sky-to-detector 1st-order simulation of 17×17 sources in
+..    the detector plane at 13 individual wavelengths (*small symbols*) and
+..    minimally-adjusted optical model using nominal NISP parameters (*large
+..    symbols*).
+
+.. topic:: Questions regarding the current Zemax simulation:
+
+   * input y-coordinates are offset by +0.85 deg
+   * output y-coordinates are not centered: (dx, dy) = (+0.7, 179.8) mm,
+     corresponding to (+0.7, -4.2) mm for centered y-coordinates
+   * input position (+0.4, +1.25) is missing the 1.85 µm wavelength
+
+References
+----------
+
+* :download:`SNIFS optical parametrization <_static/SNFactory-SNIFS-02-002.pdf>`
+  (SNfactory Technical Documentation)
+* :download:`Redefinition of the blue grating <_static/SNFactory-SNIFS-02-004.pdf>`
+  (SNfactory Technical Documentation)
+* `Euclid Mission Database <http://euclid.esac.esa.int/epdb/>`_
+* *NISP Technical Description* (EUCL-LAM-OTH-7-001)
+
+.. [Copin00] `2000PhDT.........6C
+             <https://tel.archives-ouvertes.fr/tel-00001338/fr/>`_
+.. [Lantz04] `2004SPIE.5249..146L
+             <http://adsabs.harvard.edu/abs/2004SPIE.5249..146L>`_
+
+Code documentation
+==================
+
+.. toctree::
+   :maxdepth: 2
+
+   spectrogrism
+   snifs
+   nisp
+
+:ref:`genindex`
+
+Example notebooks
+=================
+
+.. toctree::
+   :maxdepth: 2
+
+   SNIFS-R
+   NISP-S
+   distortions
+
