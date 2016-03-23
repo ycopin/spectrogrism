@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-03-02 15:19 ycopin@lyonovae03.in2p3.fr>
+# Time-stamp: <2016-03-23 00:07 ycopin@lyonovae03.in2p3.fr>
 
 """
 spectrogrism
@@ -29,6 +29,9 @@ Generic utilities for modeling grism-based spectrograph.
    Spectrograph
 
 .. inheritance-diagram:: spectrogrism.spectrogrism
+
+.. TODO:: make :class:`PointSource` inherit from :class:`pandas.DataFrame`, and
+   allow simultaneous handling of multiple souces stored in a single dataframe.
 """
 
 from __future__ import division, print_function
@@ -157,14 +160,14 @@ class SimConfig(Configuration):
 
     .. autosummary::
 
-       get_waves
-       get_coords
+       get_wavelengths
+       get_coordinates
     """
 
     conftype = "Simulation configuration"
 
-    def get_waves(self, config):
-        """Simulated wavelengthes."""
+    def get_wavelengths(self, config):
+        """Simulated wavelengths."""
 
         if 'WAVES' in self:
             waves = N.atleast_1d(self['WAVES'])
@@ -180,70 +183,73 @@ class SimConfig(Configuration):
 
         return waves
 
-    def get_coords(self):
+    def get_coordinates(self):
         """Simulated input complex coordinates `[ x + 1j*y ]`."""
 
         incoords = N.atleast_1d(self.get('input_coords', 0))
-        if N.ndim(incoords) == 1:        # [x]: generate square sampling x × x
+        if N.ndim(incoords) == 1:
+            # [x]: generate square sampling x × x
             x, y = N.meshgrid(incoords, incoords)
             coords = (x + 1j * y).ravel()
         elif N.ndim(incoords) == 2 and N.shape(incoords)[1] == 2:
             # [[x, y]]: arbitrary sampling
             coords = incoords[:, 0] + 1j * incoords[:, 1]
         else:
-            raise NotImplementedError("Unsupported input coordinates")
+            raise NotImplementedError("Unsupported input coordinates.")
 
         return coords
 
 
-class Spectrum(object):
+class Spectrum(PD.Series):
 
     """
-    A list of fluxes at different wavelengths.
-
-    .. autosummary::
-
-       default
+    A wavelength-indexed :class:`pandas.Series`.
     """
 
     def __init__(self, wavelengths, fluxes, name='spectrum'):
         """
         Initialize from wavelength and flux arrays.
 
-        :param numpy.ndarray wavelengths: input wavelengths [m]
-        :param numpy.ndarray fluxes: input fluxes [arbitrary units]
+        :param wavelengths: strictly increasing input wavelengths [m]
+        :param fluxes: input fluxes [arbitrary units]
         :param str name: optional spectrum name (e.g. "Grism transmission")
         """
 
-        self.wavelengths = N.array(wavelengths)  #: Wavelengths (sorted) [m]
-        self.fluxes = N.array(fluxes)            #: Fluxes [AU]
-        self.name = name                         #: Spectrum name
+        super(Spectrum, self).__init__(data=fluxes, index=wavelengths, name=name)
 
-        # Some tests
-        assert len(self.wavelengths) == len(self.fluxes), \
-            "Incompatible wavelength and flux arrays"
-        assert N.all(N.diff(self.wavelengths) > 0), \
-            "Wavelengths not strictly increasing"
+        assert self.index.is_monotonic_increasing, \
+            "Wavelengths not strictly increasing."
+
+    @property
+    def wavelengths(self):
+        """Wavelength array."""
+
+        return self.index.values
+
+    @property
+    def fluxes(self):
+        """Fluxes array."""
+
+        return self.values
 
     def __str__(self):
 
-        return "{}{:d} px within {:.2f}-{:.2f} µm".format(
+        return "{}{:d} px in [{:.2f}, {:.2f}] µm".format(
             self.name + ': ' if self.name else '',
-            len(self.wavelengths),
-            self.wavelengths[0] / 1e-6, self.wavelengths[-1] / 1e-6)
+            len(self), self.index[0] / 1e-6, self.index[-1] / 1e-6)
 
     @classmethod
-    def default(cls, waves=1e-6, name='spectrum'):
+    def default(cls, wavelengths=[1e-6], name=''):
         """
         A default constant-flux spectrum.
 
-        :param waves: wavelength vector [m]
+        :param wavelengths: wavelength vector [m]
         :param str name: optional name
         :return: constant-flux spectrum
         :rtype: :class:`Spectrum`
         """
 
-        wavelengths = N.atleast_1d(waves)
+        wavelengths = N.atleast_1d(wavelengths)
         fluxes = N.ones_like(wavelengths)
 
         return cls(wavelengths, fluxes, name=name)
@@ -259,8 +265,7 @@ class PointSource(object):
         """
         Initialize from position/direction and spectrum.
 
-        :param complex coords: source complex 2D-position [m]
-            or direction [rad]
+        :param complex coords: source (complex) coordinates
         :param Spectrum spectrum: source spectrum (default to standard spectrum)
         :param kwargs: propagated to :func:`Spectrum.default()` constructor
         """
@@ -271,93 +276,125 @@ class PointSource(object):
             spectrum = Spectrum.default(**kwargs)
         else:
             assert isinstance(spectrum, Spectrum), \
-                "spectrum should be a Spectrum, not {}".format(type(spectrum))
-        self.spectrum = spectrum        #: Spectrum
+                "spectrum should be a Spectrum, not '{}'.".format(type(spectrum))
+        self.spectrum = spectrum        #: :class:`Spectrum`
 
     def __str__(self):
 
-        return "{}, {}".format(self.coords, self.spectrum)
+        return "{0} at ({1.real:.6f}, {1.imag:.6f})".format(
+            self.spectrum, self.coords)
 
 
-class DetectorPositions(object):
+class DetectorPositions(PD.Panel):
 
     """
     A container for complex 2D-positions on the detector.
 
-    A Pandas-based container for (complex) positions in the detector plane,
-    namely a mode-keyed dictionary of :class:`pandas.DataFrame` including
-    complex detector positions, with wavelengths as `index` and coords as
-    `columns`.
+    A :class:`pandas.Panel`-derived container for (complex) positions in the
+    detector plane:
+
+    * items are observational modes (dispersion orders or photometric bands)
+    * major axis is wavelength (shared among all modes)
+    * minor axis is input complex coordinates (shared among all modes)
+
+    For each mode, the corresponding :class:`pandas.DataFrame` is therefore
+    organized the following way::
+
+                zin_1     zin_2  ...     zin_N
+      lbda1  zout_1_1  zout_2_1  ...  zout_N_1
+      lbda2  zout_1_2  zout_2_2  ...  zout_N_2
+      ...
+      lbdaM  zout_1_M  zout_2_M  ...  zout_N_M
+
+    * `self.modes` returns the available observing modes;
+    * `df = self.panel[mode]` is the dataframe corresponding to a given
+      observing `mode`;
+    * `self.wavelengths` returns wavelength array `[lbdas]`;
+    * `self.coordinates` returns (complex) input coordinate array `[zins]`;
+    * `df[zin]` returns a wavelength-indexed :class:`pandas.Series` of complex
+      detector positions.
 
     .. Warning::
 
-       * :class:`pandas.Panel` does not seem to support deffered construction,
-         hence the usage of a mode-keyed dict.
-       * indexing by float is not precisely a good idea. Float indices
-         (wavelengths and coordinates) are therefore rounded first with a
+       * Indexing by float is not precisely a good idea... Float indices
+         (wavelengths and input coordinates) are therefore rounded first with a
          sufficient precision (e.g. nm for wavelengths).
 
     .. autosummary::
 
-       add_spectrum
+       add_mode
        plot
-       assert_compatibility
+       test_compatibility
+       compute_offset
+       compute_rms
     """
 
+    digits = 12
     markers = {-1: '.', 0: 'D', 1: 'o', 2: 's',
                'J': 'D', 'H': 'o', 'K': 's'}
 
-    def __init__(self, wavelengths, spectrograph=None, name='default'):
+    def __init__(self, wavelengths, coordinates, data=None,
+                 spectrograph=None, name='default'):
         """
         Initialize container from spectrograph and wavelength array.
 
         :param wavelengths: input wavelengths [m]
+        :param coordinates: input complex coordinates
+        :param fluxes: input fluxes [arbitrary units]
         :param Spectrograph spectrograph: associated spectrograph (if any)
         :param str name: informative label
         """
 
+        super(DetectorPositions, self).__init__(
+            data,
+            major_axis=N.around(wavelengths, self.digits),
+            minor_axis=N.around(coordinates, self.digits))
+
         if spectrograph is not None:
             assert isinstance(spectrograph, Spectrograph), \
-                "spectrograph should be a Spectrograph"
+                "spectrograph should be a Spectrograph."
         self.spectrograph = spectrograph        #: Associated spectrograph
 
-        self.lbda = N.around(wavelengths, 12)   #: Rounded wavelengths [m]
-        self.spectra = {}                       #: {mode: dataframe}
         self.name = name                        #: Name
 
-    def get_coords(self, mode=1):
-        """
-        Return complex detector coordinates for a given observing mode.
+    @property
+    def modes(self):
+        """Observational mode list."""
 
-        :param mode: observing mode (dispersion order or photometric band)
-        :raise KeyError: required mode does not exist in current instance
-        """
+        return self.items.tolist()
 
-        return N.sort_complex(
-            self.spectra[mode].columns.values.astype(N.complex))
+    @property
+    def coordinates(self):
+        """Input source (complex) coordinate array."""
 
-    def add_spectrum(self, coords, positions, mode=1):
-        """
-        Complete detector positions corresponding to a source and an observing
-        mode.
+        return self.minor_axis.values.astype(complex)
 
-        :param complex coords: input source coordinates
-        :param numpy.ndarray positions: (complex) positions
-            in the detector plane
-        :param mode: observing mode (dispersion order or photometric band)
-        """
+    @property
+    def wavelengths(self):
+        """Wavelength array."""
 
-        assert len(positions) == len(self.lbda), \
-            "incompatible detector_positions array"
+        return self.major_axis.values
 
-        rcoords = N.around(coords, 12)  # Rounded coordinates
-        df = self.spectra.setdefault(mode,
-                                     PD.DataFrame(index=self.lbda,
-                                                  columns=(rcoords,)))
-        df[rcoords] = positions
+    def add_mode(self, mode, dataframe):
+        """Add *dataframe* as observational *mode* to current panel."""
+
+        # Coherence tests
+        assert N.allclose(dataframe.index, self.major_axis), \
+            "Dataframe wavelengths are incompatible with current panel."
+        assert N.allclose(dataframe.columns.values.astype(complex),
+                          self.minor_axis.values.astype(complex)), \
+            "Dataframe coordinates are incompatible with current panel."
+
+        # If coordinates are coherent (up to digits rounding), use
+        # previous coordinates to avoid any comparison error later on
+        # (complex are not treated natively in Pandas, and comparison
+        # is performed at object level)
+        dataframe.columns = self.minor_axis.values.astype(complex)
+
+        self[mode] = dataframe
 
     def plot(self, ax=None, coords=None, modes=None, blaze=False,
-             subsampling=0, **kwargs):
+             subsampling=1, **kwargs):
         """
         Plot spectra on detector plane.
 
@@ -385,98 +422,88 @@ class DetectorPositions(object):
         kwargs.setdefault('edgecolor', 'none')
         kwargs.setdefault('label', self.name)
 
+        # Input observational modes
+        if modes is None:             # Plot all observational modes
+            modes = self.modes
+
+        # Input coordinates
+        if coords is None:            # Plot all spectra
+            xys = self.coordinates
+        else:
+            xys = coords              # Plot specific spectra
+
+        if subsampling > 1:
+            xys = xys[::subsampling]
+
+        # Input wavelengths
+        if subsampling > 1:
+            lbda = self.wavelengths[::subsampling]
+        else:
+            lbda = self.wavelengths
+
+        bztrans = N.ones_like(lbda)     # Default blaze transmission
+        # Color has to have same shape as coordinates, (nlbda, ncoords)
+        c = N.broadcast_to(lbda[:, N.newaxis], (len(lbda), len(xys)))
+
         # Segmented colormap (blue to red)
         cmap = P.matplotlib.colors.LinearSegmentedColormap(
-            'dummy', P.get_cmap('Spectral_r')._segmentdata, len(self.lbda))
+            'dummy', P.get_cmap('Spectral_r')._segmentdata,
+            len(self.wavelengths))
 
-        # Sub-sampling of coordinates and wavelengths
-        if subsampling > 1:
-            lbda = self.lbda[::subsampling]
-        else:
-            lbda = self.lbda
-
-        # Default blaze transmission
-        bztrans = N.ones_like(lbda)
-
-        if modes is None:               # Plot all modes
-            modes = sorted(self.spectra)
-
-        for mode in modes:
+        for mode in modes:              # Loop over observational modes
             try:
-                df = self.spectra[mode]
+                df = self[mode]
             except KeyError:
-                warnings.warn("{}{} not in '{}', skipped"
-                              .format("Order #"
-                                      if isinstance(mode, int) else "Band ",
-                                      mode, self.name))
+                warnings.warn("{} not in '{}', skipped"
+                              .format(str_mode(mode), self.name))
                 continue
 
             kwcopy = kwargs.copy()
             marker = kwcopy.pop('marker', self.markers.get(mode, 'o'))
             kwcopy['label'] += " {}{}".format(
-                "#" if isinstance(mode, int) else '', mode)
+                "#" if is_spectred(mode) else '', mode)
 
             if blaze and self.spectrograph:
                 bztrans = self.spectrograph.grism.blaze_function(lbda, mode)
                 s = kwcopy.pop('s', N.maximum(60 * N.sqrt(bztrans), 10))
+                # Size has to have same shape as coordinates, (nlbda, ncoords)
+                s = N.broadcast_to(s[:, N.newaxis], (len(lbda), len(xys)))
             else:
                 s = kwcopy.pop('s', 40)
 
-            if coords is None:            # Plot all spectra
-                xys = self.get_coords(mode=mode)
-            else:
-                xys = coords              # Plot specific spectra
-
+            # This might raise a KeyError if one of the coordinates is not in df
+            positions = df[xys].values / 1e-3  # Complex positions [mm]
             if subsampling > 1:
-                xys = xys[::subsampling]
+                positions = positions[::subsampling]
 
-            for xy in xys:                # Loop over sources
-                try:
-                    positions = df[xy].values / 1e-3  # Complex positions [mm]
-                except KeyError:
-                    warnings.warn(
-                        "Source {} is unknown, skipped".format(xy))
-                    continue
-
-                if subsampling > 1:
-                    positions = positions[::subsampling]
-
-                sc = ax.scatter(positions.real, positions.imag,
-                                c=lbda / 1e-6,   # Wavelength [µm]
-                                cmap=cmap, s=s, marker=marker, **kwcopy)
-
-                kwcopy.pop('label', None)  # Label only for one source
+            sc = ax.scatter(positions.real, positions.imag,
+                            c=c / 1e-6,   # Wavelength [µm]
+                            cmap=cmap, s=s, marker=marker, **kwcopy)
 
             # kwargs.pop('label', None)      # Label only for one mode
 
-        if fig:
+        if fig:                 # Newly created axes
             fig.colorbar(sc, label=u"Wavelength [µm]")
 
         return ax
 
-    def assert_compatibility(self, other, modes=None):
+    def test_compatibility(self, other):
         """
-        Assert compatibility in wavelengths and positions with other instance.
+        Test compatibility in wavelengths and positions with other instance.
 
         :param DetectorPositions other: other instance to be confronted
-        :param list modes: observing modes (dispersion order or
-            photometric band)
-        :raise AssertionError: incompatible instance
+        :raise IndexError: incompatible instance
         """
 
-        if modes is None:
-            modes = sorted(self.spectra)
+        if not N.allclose(other.wavelengths, self.wavelengths):
+            raise IndexError(
+                "{!r} and {!r} have incompatible wavelengths."
+                .format(self.name, other.name))
 
-        assert isinstance(other, DetectorPositions)
-        assert N.allclose(self.lbda, other.lbda), \
-            "{!r} and {!r} have incompatible wavelengths".format(
-                self.name, other.name)
-        for mode in modes:
-            assert mode in self.spectra and mode in other.spectra
-            assert N.allclose(self.get_coords(mode), other.get_coords(mode)), \
-                "{!r} and {!r} have incompatible " \
-                "input coordinates for mode {}".format(
-                    self.name, other.name, mode)
+        if not N.allclose(other.coordinates, self.coordinates):
+            raise IndexError(
+                "{!r} and {!r} have incompatible coordinates."
+                .format(self.name, other.name))
 
     def compute_offset(self, other, mode=1):
         """
@@ -490,11 +517,11 @@ class DetectorPositions(object):
         :raise KeyError: requested mode cannot be found
 
         .. Warning:: `self` and `other` are supposed to be compatible
-           (see :func:`assert_compatibility`).
+           (see :func:`test_compatibility`).
         """
 
         # Dataframe of (complex) position offsets for requested mode
-        return other.spectra[mode] - self.spectra[mode]
+        return other[mode] - self[mode]
 
     def compute_rms(self, other, mode=1):
         """
@@ -506,11 +533,12 @@ class DetectorPositions(object):
         :rtype: float
 
         .. Warning:: `self` and `other` are supposed to be compatible
-           (see :func:`assert_compatibility`).
+           (see :func:`test_compatibility`).
         """
 
-        return ((self.compute_offset(other, mode=mode).abs() ** 2)
-                .values.mean() ** 0.5)
+        offsets = self.compute_offset(other, mode=mode).abs()
+
+        return ((offsets.values ** 2).mean(axis=None) ** 0.5)
 
 
 class ChromaticDistortion(object):
@@ -579,7 +607,7 @@ class ChromaticDistortion(object):
         """
         Compute amplitude of the (radial) chromatic distortion.
 
-        :param numpy.ndarray wavelengths: wavelengths [mm]
+        :param numpy.ndarray wavelengths: wavelengths [m]
         :return: lateral color radial amplitude
         """
 
@@ -700,14 +728,12 @@ class GeometricDistortion(object):
         yd = N.copy(yu)
 
         if self.Kcoeffs.any():            # Radial distortion
-            # Polynomial in r²
-            polyk_r2 = self._polyk(r2)
+            polyk_r2 = self._polyk(r2)    # Polynomial in r²
             xd *= polyk_r2
             yd *= polyk_r2
 
         if self.Pcoeffs.any():            # Tangential distortion
-            # Polynomial in r²
-            polyp_r2 = self._polyp(r2)
+            polyp_r2 = self._polyp(r2)    # Polynomial in r²
             two_xuyu = 2 * xu * yu
             xd += (self.p2 * (r2 + 2 * xu ** 2) + self.p1 * two_xuyu) * polyp_r2
             yd += (self.p1 * (r2 + 2 * yu ** 2) + self.p2 * two_xuyu) * polyp_r2
@@ -760,11 +786,12 @@ class GeometricDistortion(object):
 
         # Test
         try:
-            assert N.allclose(self.backward(xyd), xy)
-        except RuntimeError as err:
+            test = N.allclose(self.backward(xyd), xy)
+        except RuntimeError as err:  # Could not invert distortion
             warnings.warn(str(err))
-        except AssertionError:
-            warnings.warn("GeometricDistortion inversion is invalid.")
+        else:
+            if not test:
+                warnings.warn("GeometricDistortion inversion is invalid.")
 
         if ax is None:
             fig = P.figure()
@@ -909,7 +936,7 @@ class CameraOrCollimator(object):
             assert isinstance(gdist, GeometricDistortion), \
                 "gdist should be a GeometricDistortion."
         else:
-            gdist = GeometricDistortion()   # Null geometric distortion
+            gdist = GeometricDistortion()       # Null geometric distortion
 
         if cdist is not None:
             assert isinstance(cdist, ChromaticDistortion), \
@@ -1210,8 +1237,8 @@ class Prism(object):
         :param 3-list tilts: prism tilts (x, y, z) [rad]
         """
 
-        assert isinstance(material, Material), "material should be a Material"
-        assert len(tilts) == 3, "tilts should be a 3-list"
+        assert isinstance(material, Material), "material should be a Material."
+        assert len(tilts) == 3, "tilts should be a length-3 list."
 
         self.angle = angle                #: Prism angle [rad]
         self.material = material          #: Prism material
@@ -1343,7 +1370,7 @@ class Grating(object):
         :param float blaze: grating blaze angle [rad]
         """
 
-        assert isinstance(material, Material), "material should be a Material"
+        assert isinstance(material, Material), "material should be a Material."
 
         self.rho = rho            #: Grating groove density [lines/mm]
         self.material = material  #: Grating material
@@ -1609,7 +1636,7 @@ class Grism(object):
 
     def null_deviation(self, order=1):
         r"""
-        Null-deviation wavelength (approximate) [m].
+        Null-deviation wavelength (approximated) [m].
 
         This is the solution to:
 
@@ -1794,8 +1821,7 @@ class Spectrograph(object):
         :rtype: :class:`numpy.ndarray`
         """
 
-        assert isinstance(source, PointSource), \
-            "source should be a PointSource."
+        assert isinstance(source, PointSource), "source should be a PointSource."
 
         wavelengths = source.spectrum.wavelengths
 
@@ -1807,7 +1833,7 @@ class Spectrograph(object):
         # Collimator
         directions = self.collimator.forward(
             positions, wavelengths, self.gamma)
-        if isinstance(mode, int):       # Spectroscopic mode
+        if is_spectred(mode):   # Spectroscopic mode
             # Grism
             directions = self.grism.forward(
                 directions, wavelengths, order=mode)
@@ -1834,7 +1860,7 @@ class Spectrograph(object):
         position = self.detector.backward(position)
         # Camera
         direction = self.camera.backward(position, wavelength)
-        if isinstance(mode, int):       # Spectroscopic mode
+        if is_spectred(mode):   # Spectroscopic mode
             # Grism
             direction = self.grism.backward(direction, wavelength, order=mode)
         # Collimator
@@ -1847,80 +1873,92 @@ class Spectrograph(object):
 
         return coords
 
-    def test(self, simu,
-             coords=(1e-3 + 2e-3j), mode=1, verbose=False):
+    def test(self, waves=None, coords=(1e-3 + 2e-3j), mode=1, verbose=False):
         """
         Test forward and backward propagation in spectrograph.
 
-        :param SimConfig simu: simulation configuration
-        :param complex position: tested 2D-position in the focal plane [m]
+        :param waves: simulation configuration
+        :param complex position: input (complex) coordinates
         :param mode: observing mode (dispersion order or photometric band)
         :param bool verbose: verbose-mode
+        :return: boolean result of the forward/backward test
         """
 
         # Test source
-        source = PointSource(coords,
-                             Spectrum.default(simu.get_waves(self.config)))
-        wavelengths = source.spectrum.wavelengths
+        if waves is None:
+            waves = N.array([self.config.wref])
+        source = PointSource(coords, Spectrum.default(waves))
 
         if verbose:
-            print(" SPECTROGRAPH TEST ".center(LINEWIDTH, '='))
+            print(" SPECTROGRAPH TEST - MODE {} "
+                  .format(mode).center(LINEWIDTH, '='))
             print("Input source:", source)
-            print("Wavelengths [µm]:", wavelengths / 1e-6)
+            print("Wavelengths [µm]:", waves / 1e-6)
 
-        # Forward step-by-step
+        spectred = is_spectred(mode)  # Spectroscopic mode
+
+        # Forward step-by-step ------------------------------
+
+        # Telescope
         if self.telescope:
-            # Telescope
-            fpositions = self.telescope.forward(source.coords, wavelengths)
+            fpositions = self.telescope.forward(source.coords, waves)
             if verbose:
                 print("Positions (tel, forward) [×1e6]:", fpositions * 1e6)
         else:
             fpositions = source.coords
+
         # Collimator
-        fdirections = self.collimator.forward(fpositions,
-                                              wavelengths, self.gamma)
+        fdirections = self.collimator.forward(fpositions, waves, self.gamma)
         if verbose:
             print("Directions (coll, forward) [×1e6]:", fdirections * 1e6)
-        if isinstance(mode, int):       # Spectroscopic mode
+
+        if spectred:            # Spectroscopic mode
             # Grism
-            fdirections = self.grism.forward(fdirections,
-                                             wavelengths, order=mode)
+            fdirections = self.grism.forward(fdirections, waves, order=mode)
             if verbose:
                 print("Directions (grism, forward) [×1e6]:", fdirections * 1e6)
+
         # Camera
-        dpositions = self.camera.forward(fdirections, wavelengths)
+        dpositions = self.camera.forward(fdirections, waves)
         if verbose:
             print("Positions (camera, forward) [mm]:", dpositions / 1e-3)
+
         # Detector
         dpositions = self.detector.forward(dpositions)
         if verbose:
             print("Positions (detector) [mm]:", dpositions / 1e-3)
 
+        # Backward step-by-step ------------------------------
+
         # Loop over positions in detector plane
-        for lbda, dpos in zip(wavelengths, dpositions):
-            # Backward step-by-step
+        for lbda, dpos in zip(waves, dpositions):
             if verbose:
                 print("Test position (detector) [mm]:", dpos / 1e-3,
                       "Wavelength [µm]:", lbda / 1e-6)
+
             # Detector
             dpos = self.detector.backward(dpos)
             if verbose:
                 print("Direction (detector, backward) [mm]:", dpos / 1e-3)
+
             # Camera
             bdirection = self.camera.backward(dpos, lbda)
             if verbose:
                 print("Direction (camera, backward) [×1e6]:", bdirection * 1e6)
-            if isinstance(mode, int):       # Spectroscopic mode
+
+            if spectred:        # Spectroscopic mode
                 # Grism
                 bdirection = self.grism.backward(bdirection, lbda, order=mode)
                 if verbose:
                     print("Direction (grism, backward) [×1e6]:",
                           bdirection * 1e6)
+
             # Collimator
             fposition = self.collimator.backward(bdirection,
                                                  lbda, self.gamma)
+
+            # Telescope
             if self.telescope:
-                # Telescope
                 tdirection = self.telescope.backward(fposition, lbda)
                 if verbose:
                     print("Position (coll, backward) [×1e6]:",
@@ -1930,8 +1968,7 @@ class Spectrograph(object):
                     print("Input direction (reminder) [×1e6]:",
                           source.coords * 1e6)
 
-                assert N.isclose(source.coords, tdirection), \
-                    "Backward modeling does not match"
+                return N.isclose(source.coords, tdirection)
             else:
                 if verbose:
                     print("Focal-plane position (backward) [mm]:",
@@ -1939,8 +1976,7 @@ class Spectrograph(object):
                     print("Input position (reminder) [mm]:",
                           source.coords / 1e-3)
 
-                assert N.isclose(source.coords, fposition), \
-                    "Backward modeling does not match"
+                return N.isclose(source.coords, fposition)
 
     def predict_positions(self, simcfg, **kwargs):
         """
@@ -1948,41 +1984,45 @@ class Spectrograph(object):
 
         :param SimConfig simcfg: input simulation configuration
         :param kwargs: configuration options (e.g. predicted `modes`)
-        :return: simulated spectra
+        :return: predicted positions [m]
         :rtype: :class:`DetectorPositions`
         """
 
         # Update simulation configuration on-the-fly
         if kwargs:
-            simcfg = SimConfig(simcfg)
+            simcfg = SimConfig(simcfg)  # Make a copy, to leave input simcfg intact
             simcfg.update(kwargs)
 
         # Input coordinates
-        coords = simcfg.get_coords()           # 1D complex array
+        coords = simcfg.get_coordinates()      # 1D complex array
         # Rotation in the input plane
         angle = simcfg.get('input_angle', 0)   # [rad]
         if angle:
             coords *= C.exp(1j * angle)
 
         # Input source (coordinates will be updated later on)
-        waves = simcfg.get_waves(self.config)
-        source = PointSource(0, waves=waves)
-        wavelengths = source.spectrum.wavelengths
-
-        # Simulation parameters
-        modes = simcfg.get('modes', [1])
+        waves = simcfg.get_wavelengths(self.config)
 
         # Detector positions
-        detector = DetectorPositions(
-            wavelengths, spectrograph=self,
-            name=self.config.name)
+        detector = DetectorPositions(waves, coords,
+                                     spectrograph=self,
+                                     name=self.config.name)
+        # Use rounded detector wavelengths and coordinates
+        waves = detector.wavelengths
+        coords = detector.coordinates
+
+        # Input spectrum
+        spec = Spectrum.default(waves)
+
+        # Simulated observing modes
+        modes = simcfg.get('modes', [1])
 
         # Simulate forward propagation for all focal-plane positions
-        for xy in coords:
-            source.coords = xy    # Update source position
-            for mode in modes:    # Loop over observing modes
-                dpos = self.forward(source, mode)  # Detector plane position
-                detector.add_spectrum(source.coords, dpos, mode=mode)
+        for mode in modes:      # Loop over observing modes
+            positions = N.array([ self.forward(PointSource(xy, spec), mode=mode)
+                                  for xy in coords ])  # (npos, nlbda)
+            df = PD.DataFrame(positions.T, index=waves, columns=coords)
+            detector.add_mode(mode, df)
 
         return detector
 
@@ -2054,7 +2094,7 @@ class Spectrograph(object):
         # Initial guess simulation
         mpositions = self.predict_positions(simcfg)
         # Test compatibility with objective detector positions only once
-        mpositions.assert_compatibility(positions, modes=modes)
+        mpositions.test_compatibility(positions)
 
         rmss = []
         for mode in modes:
@@ -2096,6 +2136,18 @@ class Spectrograph(object):
         return result
 
 # Utility functions =======================================
+
+
+def is_spectred(mode):
+    """Is observational *mode* a spectroscopic (int) or photometric (str) mode?"""
+
+    return not isinstance(mode, basestring)
+
+
+def str_mode(mode):
+    """'Order #X' or 'Band Y'."""
+
+    return "{}{}".format("Order #" if is_spectred(mode) else "Band ", mode)
 
 
 def rect2pol(position):

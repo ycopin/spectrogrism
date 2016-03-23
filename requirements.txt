@@ -1,5 +1,4 @@
 numpy
-scipy
+pandas
 matplotlib
-astropy
 nbsphinx

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-03-02 13:32 ycopin@lyonovae03.in2p3.fr>
+# Time-stamp: <2016-03-23 00:19 ycopin@lyonovae03.in2p3.fr>
 
 """
 snifs
@@ -85,10 +85,11 @@ def plot_SNIFS(optcfg=SNIFS_R, simcfg=SNIFS_SIMU,
     if test:
         print(" Spectrograph round-trip test ".center(S.LINEWIDTH, '-'))
         for mode in simcfg['modes']:
-            try:
-                spectro.test(simcfg, mode=mode, verbose=verbose)
-            except AssertionError as err:
-                warnings.warn("Order #{}: {}".format(mode, str(err)))
+            if not spectro.test(simcfg.get_wavelengths(optcfg),
+                                mode=mode, verbose=verbose):
+                warnings.warn(
+                    "Order #{}: backward modeling does not match."
+                    .format(mode))
             else:
                 print("Order #{:+d}: OK".format(mode))
 
@@ -115,7 +116,7 @@ if __name__ == '__main__':
 
     ax = plot_SNIFS(test=True, verbose=False)
 
-    embed_html = 'bokeh'
+    embed_html = False
     if embed_html == 'mpld3':
         try:
             S.dump_mpld3(ax.figure, 'SNIFS-R_mpld3.html')

@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-03-02 13:30 ycopin@lyonovae03.in2p3.fr>
+# Time-stamp: <2016-03-23 01:08 ycopin@lyonovae03.in2p3.fr>
 
 """
 nisp
 ----
 
-NISP-specific tools, including a :class:`ZemaxSimulation` handler.
+NISP-specific tools, including a :class:`ZemaxPositions` handler.
 
 .. autosummary::
 
-   ZemaxSimulation
+   ZemaxPositions
 """
 
 from __future__ import division, print_function, absolute_import
@@ -20,6 +20,7 @@ import warnings
 
 import numpy as N
 import matplotlib.pyplot as P
+import pandas as PD
 
 if __name__ == "__main__":
     # Cannot import explicitely local spectrogrism using relative import
@@ -78,7 +79,7 @@ NISP_R.update([
 ])
 
 
-class ZemaxSimulation(object):
+class ZemaxPositions(S.DetectorPositions):
 
     """
     Zemax simulations, in spectroscopic or photometric mode.
@@ -95,81 +96,89 @@ confNb wave xindeg yindeg ximgmm yimgmm pxsize nxpup nypup nximg nyimg
 ximgcpx yimgcpx ximgcmm yimgcmm xpsfcmm ypsfcmm
 ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
-    def __init__(self, simulations):
+    # List of non-standard dataframe attributes (see
+    # http://pandas.pydata.org/pandas-docs/stable/internals.html#define-original-properties)
+    _internal_names = S.DetectorPositions._internal_names + ['filenames']
+    _internal_names_set = set(_internal_names)
+
+    def __init__(self, simulations, colname='psfcmm'):
         """
-        Initialize from :class:`Configuration` `simulations` = {mode: filename}.
+        Initialize from `simulations` = {mode: filename}.
         """
 
-        self.filenames = simulations
-        self.name = simulations.name
+        initialized = False
 
-        # Observing modes
-        self.modes = [ mode
-                       for mode in self.filenames.keys() if mode != 'name' ]
-        # Dispersion orders (int modes)
-        self.orders = [ mode
-                        for mode in self.modes if isinstance(mode, int) ]
-        # Undispersed photometric bands (str modes)
-        self.bands = [ mode
-                       for mode in self.modes if isinstance(mode, basestring) ]
+        # Extract simulation name from input dictionary
+        name = simulations.get("name", "Anonymous")
 
-        # Load datasets from filenames and minimally check consistency
-        # {mode: ndarray}
-        self.data = self.load_multimode_sims(self.filenames)
+        self.filenames = simulations  # {mode: filename}
 
-        # Convert to DetectorPositions (internally structured in modes)
-        self.positions = self.detector_positions(modes=self.modes)
-        # Load simulation configuration
-        self.simcfg = self.get_simcfg(modes=self.modes)
+        for mode, filename in self.filenames.iteritems():
+            if mode == 'name':
+                continue
+            # Read dataframe (wavelengths as index, input coordinates in columns)
+            df = self.read_simulation(filename=filename, colname=colname)
+            if not initialized:
+                # Initialize DetectorPositions from wavelenths and coordinates
+                super(ZemaxPositions, self).__init__(
+                    df.index.values,
+                    df.columns.values.astype(complex),
+                    name=name,
+                )
+                initialized = True
+            # Add dataframe
+            self.add_mode(mode, df)
+
+    @property
+    def orders(self):
+        """Dispersion orders (int modes)."""
+
+        return [ mode for mode in self.modes if S.is_spectred(mode) ]
+
+    @property
+    def bands(self):
+        """Undispersed photometric bands (string modes)."""
+
+        return [ mode for mode in self.modes if not S.is_spectred(mode) ]
 
     def __str__(self):
 
-        s = "Simulations: {}, {} modes".format(self.name, len(self.modes))
+        s = "Simulations '{}': {} modes".format(self.name, len(self.modes))
         for order in self.orders:
             s += "\n  Order #{}: {}".format(order, self.filenames[order])
         for band in self.bands:
             s += "\n  Band   {}: {}".format(band, self.filenames[band])
 
-        # All orders are supposed to share the same input values
-        ref_data = self.data[self.modes[0]]
-        waves = set(ref_data['wave'])
-        xin = set(ref_data['xindeg'])
-        yin = set(ref_data['yindeg'])
-
+        waves = self.wavelengths / 1e-6  # [µm]
+        coords = self.coordinates
         s += "\n  Wavelengths: {} steps from {:.2f} to {:.2f} µm".format(
             len(waves), min(waves), max(waves))
-        s += "\n  Coords: {} × {} sources".format(
-            len(xin), len(yin))
+        s += "\n  Coords: {} sources".format(len(coords))
 
         return s
 
-    def load_multimode_sims(self, simulations):
+    @classmethod
+    def read_simulation(cls, filename, colname='psfcmm'):
         """
-        Load multi-mode simulations from :class:`Configuration`
-        `simulations` = {mode: filename}.
+        Read single-mode simulation.
+
+        :param str filename: input simulation filename
+        :param str colname: column name suffix to be used as output positions
+                            (in **mm**)
+        :return: (wavelength, input coordinates) dataframe
+        :rtype: :class:`pandas.DataFrame`
+
+        .. Warning:: this function relies on :meth:`pandas.DataFrame.pivot`.
+           Because of Pandas `issue #12666
+           <https://github.com/pydata/pandas/issues/12666>`_ and related Numpy
+           `issue 7535 <https://github.com/numpy/numpy/issues/7435>`_, this
+           requires Numpy >= v1.11.
         """
 
-        data = { mode: self.load_simulation(simulations[mode])
-                 for mode in self.modes }
+        if 'mm' not in colname:  # Input coords are supposed to be in mm
+            raise NotImplementedError("Only output columns in mm are supported.")
 
-        # Consistency checks on configurations, wavelengths and input positions
-        if len(self.modes) > 1:
-            ref_mode = self.modes[0]
-            for mode in self.modes[1:]:
-                # Beware: all files are not sorted the same way
-                for name in ('wave', 'xindeg', 'yindeg'):
-                    vector = N.sort(N.unique(data[mode][name]))
-                    ref_vector = N.sort(N.unique(data[ref_mode][name]))
-                    assert N.allclose(vector, ref_vector), \
-                        "'{}' of modes {} and {} are incompatible".format(
-                            name, mode, ref_mode)
-
-        return data
-
-    def load_simulation(self, filename):
-        """Load simulation from single `filename`."""
-
-        data = N.genfromtxt(filename, dtype=None, names=self.colnames)
+        data = N.genfromtxt(filename, dtype=None, names=cls.colnames)
 
         # Cleanup: some Xin are arbitrarily close to zero
         warnings.warn("Setting approximately null xindeg to 0")
@@ -183,61 +192,49 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         warnings.warn("Discarding wavelengths > 1.81 µm")
         data = data[data['wave'] < 1.81]
 
-        return data
+        # Convert to DataFrame and modify/add columns
+        df = PD.DataFrame(data)
+        # Wavelengths [m]
+        df['wave'] *= 1e-6
+        # Input complex coordinates [rad]
+        df['xyinrad'] = (df['xindeg'] + 1j * df['yindeg']) / S.RAD2DEG
+        # Output complex coordinates [m]
+        df['xyoutm'] = (df['x' + colname] + 1j * df['y' + colname]) * 1e-3
 
-    def get_simcfg(self, modes=None):
-        """Generate a :class:`SimConfig` corresponding to simulation."""
+        # Round wavelengths and input coordinates before pivoting
+        df = df.round({'wave': S.DetectorPositions.digits,
+                       'xyinrad': S.DetectorPositions.digits})
 
-        if modes is None:
-            modes = self.modes
+        # Convert column 'xyinrad' into columns
+        pivot = df.pivot("wave", "xyinrad", "xyoutm")
 
-        ref_data = self.data[modes[0]]
-        # Unique wavelengths [m]
-        waves = N.unique(ref_data['wave']) * 1e-6   # [m]
-        # Unique input coordinates
-        coords = N.unique(ref_data['xindeg'] + 1j * ref_data['yindeg'])
+        # Make sure wavelengths and input complex coordinates are sorted
+        pivot.sort_index(inplace=True)
+        pivot = pivot.reindex_axis(             # Complex coordinates
+            N.sort(pivot.columns.values.astype(complex)), axis=1)
+
+        return pivot
+
+    def get_simcfg(self):
+        """
+        Generate a :class:`SimConfig` corresponding to current simulation.
+        """
+
+        # Wavelengths [m]
+        waves = self.wavelengths
+        # Input (complex) coordinates [rad]
+        coords = self.coordinates
         # Convert back to [[x, y]]
-        coords = N.vstack((coords.real, coords.imag)).T / S.RAD2DEG   # [rad]
+        coords = N.vstack((coords.real, coords.imag)).T
 
         simcfg = S.Configuration([('name', self.name),
                                   ('wave_npx', len(waves)),
                                   ('wave_range', [min(waves), max(waves)]),
-                                  ('modes', modes),
+                                  ('modes', self.modes),
                                   ('input_coords', coords)
                                   ])
 
         return S.SimConfig(simcfg)
-
-    def detector_positions(self, modes=None, colname='psfcmm'):
-        """Convert simulation to :class:`DetectorPositions` in mm."""
-
-        if modes is None:
-            modes = self.modes
-
-        if 'mm' not in colname:  # Input coords are supposed to be in mm
-            raise NotImplementedError()
-
-        ref_mode = modes[0]
-        data = self.data[ref_mode]
-        waves = N.sort(N.unique(data['wave']))
-        coords = N.unique(data['xindeg'] + 1j * data['yindeg'])  # [deg]
-
-        positions = S.DetectorPositions(waves * 1e-6,  # Wavelengths in [m]
-                                        name=self.name)
-        for mode in modes:
-            data = self.data[mode]
-            for xy in coords:                  # Loop over input positions [deg]
-                select = (N.isclose(data['xindeg'], xy.real) &
-                          N.isclose(data['yindeg'], xy.imag))
-                subdata = data[select]                         # Data selection
-                subdata = subdata[N.argsort(subdata['wave'])]  # Sort subdata
-                # Sanity check
-                assert N.allclose(subdata['wave'], waves)
-                dpos = (subdata['x' + colname] +
-                        1j * subdata['y' + colname])           # [mm]
-                positions.add_spectrum(xy / S.RAD2DEG, dpos * 1e-3, mode=mode)
-
-        return positions
 
     def plot_input(self, ax=None, **kwargs):
         """Plot input coordinates (degrees)."""
@@ -249,7 +246,8 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
                 xlabel="x [deg]", ylabel="y [deg]",
                 title="Simulation '{}'\nInput positions".format(self.name))
 
-        coords = self.simcfg.get_coords() * S.RAD2DEG  # [deg]
+        coords = self.coordinates * S.RAD2DEG  # [deg]
+
         ax.scatter(coords.real, coords.imag, **kwargs)
 
         ax.set_aspect('equal', adjustable='datalim')
@@ -262,8 +260,8 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         if modes is None:
             modes = self.modes
 
-        ax = self.positions.plot(ax=ax, modes=modes,
-                                 subsampling=subsampling, **kwargs)
+        ax = self.plot(ax=ax, modes=modes,
+                       subsampling=subsampling, **kwargs)
 
         title = "Simulation '{}'".format(self.name)
         if subsampling:
@@ -272,32 +270,31 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
         return ax
 
-    def plot_offsets(self, other_positions, ax=None, mode=1, nwaves=3):
+    def plot_offsets(self, other, ax=None, mode=1, nwaves=3):
         """Plot output (detector) coordinate offsets [px]."""
 
         if ax is None:
             fig = P.figure()
             ax = fig.add_subplot(1, 1, 1,
                                  xlabel="x [mm]", ylabel="y [mm]")
-            title = "Simulation '{}', {}{}\nposition offsets [px]".format(
-                self.name, "order #" if isinstance(mode, int) else "band {}",
-                mode)
+            title = "Simulation '{}', {}\nposition offsets [px]".format(
+                self.name, S.str_mode(mode))
             ax.set_title(title)
             ax.set_aspect('equal', adjustable='datalim')
         else:
             fig = None          # Will serve as a flag
 
-        # Wavelength-indexed DataFrames
-        zpos = self.positions.spectra[mode] / 1e-3   # [mm]
-        spos = other_positions.spectra[mode] / 1e-3        # [mm]
-        dpos = spos - zpos                           # Position offset [mm]
-        dpos /= other_positions.spectrograph.detector.pxsize / 1e-3  # [px]
+        # Position offset
+        zpos = self[mode] / 1e-3    # [mm]
+        opos = other[mode] / 1e-3   # [mm]
+        dpos = opos - zpos          # [mm]
+        dpos /= other.spectrograph.detector.pxsize / 1e-3  # [px]
 
-        # Create wavelength vector
-        waves = zpos.index
+        # Create subsampled wavelength vector of length nwaves
+        waves = self.wavelengths
         iwaves = N.linspace(0, len(waves) - 1, nwaves).round().astype(int)
         waves = waves[iwaves]
-
+        # Generate colormap
         colorMap = P.matplotlib.cm.ScalarMappable(
             norm=P.matplotlib.colors.Normalize(vmin=waves[0], vmax=waves[-1]),
             cmap=P.get_cmap('Spectral_r'))   # (blue to red)
@@ -345,12 +342,12 @@ if __name__ == '__main__':
     plot_offset = False         # Offset plots
 
     # Zemax simulations
-    zmx = ZemaxSimulation(simulations)
-    print(zmx)
+    zmx_pos = ZemaxPositions(simulations)
+    print(zmx_pos)
 
     # Optical modeling
-    optcfg = NISP_R             # Optical configuration (default NISP)
-    simcfg = zmx.get_simcfg()   # Simulation configuration
+    optcfg = NISP_R                 # Optical configuration (default NISP)
+    simcfg = zmx_pos.get_simcfg()   # Simulation configuration
 
     spectro = S.Spectrograph(optcfg,
                              telescope=S.Telescope(optcfg))
@@ -358,44 +355,46 @@ if __name__ == '__main__':
 
     # Tests
     print(" Spectrograph round-trip test ".center(S.LINEWIDTH, '-'))
-    for mode in simcfg.get('modes', (1, 0, 2)):
-        try:
-            spectro.test(simcfg, mode=mode, verbose=False)
-        except AssertionError as err:
-            warnings.warn("Order #{}: {}".format(mode, str(err)))
+    for mode in zmx_pos.modes:                  # Loop over all observing modes
+        if not spectro.test(
+                waves=zmx_pos.wavelengths,      # Test on all input wavelengths
+                coords=zmx_pos.coordinates[0],  # Test on 1st input coordinates
+                mode=mode, verbose=False):
+            warnings.warn("{}: backward modeling does not match."
+                          .format(S.str_mode(mode)))
         else:
-            print("{}{}: OK".format(
-                "Order #" if isinstance(mode, int) else "Band   ", mode))
+            print("{}: OK".format(S.str_mode(mode)))
 
     # Spectroscopic modes ==============================
 
-    spositions = spectro.predict_positions(simcfg, modes=zmx.orders)
-    spositions.assert_compatibility(zmx.positions, modes=zmx.orders)
+    spec_pos = spectro.predict_positions(simcfg, modes=zmx_pos.orders)
+    spec_pos.test_compatibility(zmx_pos)
 
     # Plots
-    # ax = zmx.plot_input()
+    # ax = zmx_pos.plot_input()
 
     kwargs = dict(s=20, edgecolor='k', linewidths=1)  # Outlined symbols
-    ax = zmx.plot_output(modes=zmx.orders, subsampling=subsampling, **kwargs)
+    ax = zmx_pos.plot_output(modes=zmx_pos.orders,
+                             subsampling=subsampling, **kwargs)
 
     # kwargs = dict(edgecolor=None, facecolor='none', linewidths=1)  # Open symbols
-    kwargs = {}                      # Default
-    for order in zmx.orders:
+    kwargs = {}                   # Default
+    for order in zmx_pos.orders:  # Loop over spectroscopic dispersion orders
         # Compute RMS on current order positions
-        rms = zmx.positions.compute_rms(spositions, mode=order)
+        rms = zmx_pos.compute_rms(spec_pos, mode=order)
         print("Order #{}: RMS = {:.4f} mm = {:.2f} px".format(
             order, rms / 1e-3, rms / spectro.detector.pxsize))
-        spositions.plot(ax=ax, zorder=0,  # Draw below Zemax
-                        modes=(order,), blaze=(order != 1),
-                        subsampling=subsampling,
-                        label="{} #{} (RMS={:.1f} px)".format(
-                            spositions.name, order,
-                            rms / spectro.detector.pxsize),
-                        **kwargs)
+        spec_pos.plot(ax=ax, zorder=0,  # Draw below Zemax
+                      modes=(order,), blaze=(order != 1),
+                      subsampling=subsampling,
+                      label="{} #{} (RMS={:.1f} px)".format(
+                          spec_pos.name, order,
+                          rms / spectro.detector.pxsize),
+                      **kwargs)
 
-    if adjust:                           # Optical adjustment
+    if adjust:                  # Optical adjustment
         result = spectro.adjust(
-            zmx.positions, simcfg, tol=1e-4,
+            zmx_pos, simcfg, tol=1e-4,
             optparams=[
                 'detector_dy',  # 'detector_dx',
                 'grism_prism_tiltz',
@@ -403,20 +402,19 @@ if __name__ == '__main__':
                 # 'collimator_distortion', 'camera_distortion',
             ])
         if result.success:          # Adjusted model
-            spositions_fit = spectro.predict_positions(simcfg)
-            spositions_fit.plot(ax=ax, zorder=0,
-                                subsampling=subsampling,
-                                label="Adjusted {} (RMS={:.1f} px)".format(
-                                    spositions.name,
-                                    result.rms / spectro.detector.pxsize))
+            spec_pos_fit = spectro.predict_positions(simcfg)
+            spec_pos_fit.plot(ax=ax, zorder=0,
+                              subsampling=subsampling,
+                              label="Adjusted {} (RMS={:.1f} px)".format(
+                                  spec_pos.name,
+                                  result.rms / spectro.detector.pxsize))
 
     ax.axis([-100, +100, -100, +100])               # [mm]
     ax.set_aspect('equal', adjustable='datalim')
-    # ax.set_axisbg('0.9')
     ax.legend(loc='upper left', fontsize='small', frameon=True, framealpha=0.5)
 
     if embed_html:
-        figname = zmx.name + '_mpld3.html'
+        figname = zmx_pos.name + '_mpld3.html'
         try:
             S.dump_mpld3(ax.figure, figname)
         except ImportError:
@@ -424,29 +422,29 @@ if __name__ == '__main__':
 
     # Position offset quiver plots
     if plot_offset:
-        for order in zmx.orders:
-            ax = zmx.plot_offsets(spositions, mode=order)
+        for order in zmx_pos.orders:
+            ax = zmx_pos.plot_offsets(spec_pos, mode=order)
 
     # Imagery modes ==============================
 
-    ppositions = spectro.predict_positions(simcfg, modes=zmx.bands)
-    ppositions.assert_compatibility(zmx.positions, modes=zmx.bands)
+    phot_pos = spectro.predict_positions(simcfg, modes=zmx_pos.bands)
+    phot_pos.test_compatibility(zmx_pos)
 
     kwargs = dict(s=20, edgecolor='k', linewidths=1)  # Outlined symbols
-    ax = zmx.plot_output(modes=zmx.bands, **kwargs)
+    ax = zmx_pos.plot_output(modes=zmx_pos.bands, **kwargs)
 
     kwargs = {}                 # Default
-    for band in zmx.bands:
+    for band in zmx_pos.bands:  # Loop over photometric bands
         # Compute RMS on positions
-        rms = zmx.positions.compute_rms(ppositions, mode=band)
+        rms = zmx_pos.compute_rms(phot_pos, mode=band)
         print("Band   {}: RMS = {:.4f} mm = {:.2f} px".format(
             band, rms / 1e-3, rms / spectro.detector.pxsize))
-        ppositions.plot(ax=ax, zorder=0,  # Draw below Zemax
-                        modes=(band,),
-                        label="{} {} (RMS={:.1f} px)".format(
-                            ppositions.name, band,
-                            rms / spectro.detector.pxsize),
-                        **kwargs)
+        phot_pos.plot(ax=ax, zorder=0,  # Draw below Zemax
+                      modes=(band,),
+                      label="{} {} (RMS={:.1f} px)".format(
+                          phot_pos.name, band,
+                          rms / spectro.detector.pxsize),
+                      **kwargs)
 
     ax.axis([-100, +100, -100, +100])               # [mm]
     ax.set_aspect('equal', adjustable='datalim')
