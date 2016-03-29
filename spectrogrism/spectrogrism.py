@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-03-23 00:07 ycopin@lyonovae03.in2p3.fr>
+# Time-stamp: <2016-03-23 11:11:34 ycopin>
 
 """
 spectrogrism
@@ -29,9 +29,6 @@ Generic utilities for modeling grism-based spectrograph.
    Spectrograph
 
 .. inheritance-diagram:: spectrogrism.spectrogrism
-
-.. TODO:: make :class:`PointSource` inherit from :class:`pandas.DataFrame`, and
-   allow simultaneous handling of multiple souces stored in a single dataframe.
 """
 
 from __future__ import division, print_function
@@ -64,7 +61,7 @@ RAD2SEC = RAD2MIN * 60          #: Convert from radians to arc seconds
 class Configuration(OrderedDict):
 
     """
-    A simple dict-derived configuration.
+    A :class:`OrderedDict`-derived configuration.
 
     .. autosummary::
 
@@ -166,7 +163,7 @@ class SimConfig(Configuration):
 
     conftype = "Simulation configuration"
 
-    def get_wavelengths(self, config):
+    def get_wavelengths(self, optcfg):
         """Simulated wavelengths."""
 
         if 'WAVES' in self:
@@ -174,10 +171,10 @@ class SimConfig(Configuration):
         else:
             npx = self.get('wave_npx', 1)
             if npx > 1:
-                wmin, wmax = self.get('wave_range', config['wave_range'])
+                wmin, wmax = self.get('wave_range', optcfg['wave_range'])
                 waves = N.linspace(wmin, wmax, npx)
             elif npx == 1:
-                waves = config.wref
+                waves = optcfg.wref
             else:
                 raise ValueError("Invalid number of pixels: {}".format(npx))
 
@@ -210,8 +207,8 @@ class Spectrum(PD.Series):
         """
         Initialize from wavelength and flux arrays.
 
-        :param wavelengths: strictly increasing input wavelengths [m]
-        :param fluxes: input fluxes [arbitrary units]
+        :param list wavelengths: strictly increasing input wavelengths [m]
+        :param list fluxes: input fluxes [arbitrary units]
         :param str name: optional spectrum name (e.g. "Grism transmission")
         """
 
@@ -243,7 +240,7 @@ class Spectrum(PD.Series):
         """
         A default constant-flux spectrum.
 
-        :param wavelengths: wavelength vector [m]
+        :param list wavelengths: wavelength vector [m]
         :param str name: optional name
         :return: constant-flux spectrum
         :rtype: :class:`Spectrum`
@@ -265,7 +262,7 @@ class PointSource(object):
         """
         Initialize from position/direction and spectrum.
 
-        :param complex coords: source (complex) coordinates
+        :param complex coords: single source (complex) coordinates
         :param Spectrum spectrum: source spectrum (default to standard spectrum)
         :param kwargs: propagated to :func:`Spectrum.default()` constructor
         """
@@ -314,17 +311,20 @@ class DetectorPositions(PD.Panel):
     * `df[zin]` returns a wavelength-indexed :class:`pandas.Series` of complex
       detector positions.
 
-    .. Warning::
+    .. WARNING:: Indexing by float is not precisely a good idea... Float
+       indices (wavelengths and input coordinates) are therefore rounded first
+       with a sufficient precision (e.g. nm for wavelengths).
 
-       * Indexing by float is not precisely a good idea... Float indices
-         (wavelengths and input coordinates) are therefore rounded first with a
-         sufficient precision (e.g. nm for wavelengths).
+    .. TODO:: do not use complex coordinates as column name (this is not
+       natively supported in Pandas, nor a good idea). Store input coordinates
+       in an associated :class:`pandas.Series`, and use series index as column
+       names.
 
     .. autosummary::
 
        add_mode
        plot
-       test_compatibility
+       check_alignment
        compute_offset
        compute_rms
     """
@@ -333,20 +333,18 @@ class DetectorPositions(PD.Panel):
     markers = {-1: '.', 0: 'D', 1: 'o', 2: 's',
                'J': 'D', 'H': 'o', 'K': 's'}
 
-    def __init__(self, wavelengths, coordinates, data=None,
+    def __init__(self, wavelengths, coordinates,
                  spectrograph=None, name='default'):
         """
         Initialize container from spectrograph and wavelength array.
 
-        :param wavelengths: input wavelengths [m]
-        :param coordinates: input complex coordinates
-        :param fluxes: input fluxes [arbitrary units]
+        :param list wavelengths: input wavelengths [m]
+        :param list coordinates: input complex coordinates
         :param Spectrograph spectrograph: associated spectrograph (if any)
         :param str name: informative label
         """
 
         super(DetectorPositions, self).__init__(
-            data,
             major_axis=N.around(wavelengths, self.digits),
             minor_axis=N.around(coordinates, self.digits))
 
@@ -398,7 +396,7 @@ class DetectorPositions(PD.Panel):
         """
         Plot spectra on detector plane.
 
-        :param ax: pre-existing :class:`matplotlib.pyplot.Axes` instance if any
+        :param matplotlib.pyplot.Axes ax: pre-existing axes instance if any
         :param list coords: selection of input coordinates to be plotted
         :param list modes: selection of observing modes to be plotted
         :param bool blaze: encode the blaze function in the marker size
@@ -487,11 +485,11 @@ class DetectorPositions(PD.Panel):
 
         return ax
 
-    def test_compatibility(self, other):
+    def check_alignment(self, other):
         """
-        Test compatibility in wavelengths and positions with other instance.
+        Check compatibility in wavelengths and positions with other instance.
 
-        :param DetectorPositions other: other instance to be confronted
+        :param DetectorPositions other: other instance to be compared to
         :raise IndexError: incompatible instance
         """
 
@@ -513,7 +511,6 @@ class DetectorPositions(PD.Panel):
         :param mode: observing mode (dispersion order or photometric band)
         :return: (complex) position offsets [m]
         :rtype: :class:`pandas.DataFrame`
-        :raise AssertionError: incompatible instance
         :raise KeyError: requested mode cannot be found
 
         .. Warning:: `self` and `other` are supposed to be compatible
@@ -529,8 +526,9 @@ class DetectorPositions(PD.Panel):
 
         :param DetectorPositions other: other instance to be tested
         :param mode: observing mode (dispersion order or photometric band)
-        :return: RMS [m]
+        :return: RMS offset [m]
         :rtype: float
+        :raise KeyError: requested mode cannot be found
 
         .. Warning:: `self` and `other` are supposed to be compatible
            (see :func:`test_compatibility`).
@@ -572,10 +570,8 @@ class ChromaticDistortion(object):
 
         Note that :math:`c_0 = 0`.
 
-        :param float wref: reference wavelength
-            :math:`\lambda_{\mathrm{ref}}` [m]
-        :param list coeffs: lateral color coefficients
-            :math:`[c_{i = 1, \ldots N}]`
+        :param float wref: reference wavelength :math:`\lambda_{\mathrm{ref}}` [m]
+        :param list coeffs: lateral color coefficients :math:`[c_{i=1, \ldots N}]`
         """
 
         self.wref = wref               #: Reference wavelength [m]
@@ -651,7 +647,7 @@ class GeometricDistortion(object):
         """
         Initialize from center of distortion and K- and P-coefficients.
 
-        :param complex center: center of distortion [m]
+        :param complex center: complex position of center of distortion [m]
         :param list Kcoeffs: radial distortion coefficients
         :param list Pcoeffs: tangential distortion coefficients
         """
@@ -1233,7 +1229,7 @@ class Prism(object):
         Initialize grism from its optical parameters.
 
         :param float angle: prism angle [rad]
-        :param material: prism :class:`Material`
+        :param Material material: prism material
         :param 3-list tilts: prism tilts (x, y, z) [rad]
         """
 
@@ -1474,7 +1470,7 @@ class Grism(object):
 
     def blaze_function(self, wavelengths, order=1):
         r"""
-        Return blaze function.
+        Blaze function.
 
         In the normal configuration, the blaze function of a grism is given by
 
@@ -1815,7 +1811,7 @@ class Spectrograph(object):
         """
         Forward light propagation from a focal-plane point source.
 
-        :param source: input :class:`PointSource`
+        :param PointSource source: input source
         :param mode: observing mode (dispersion order or photometric band)
         :return: (complex) 2D-positions in detector plane
         :rtype: :class:`numpy.ndarray`
@@ -1877,8 +1873,8 @@ class Spectrograph(object):
         """
         Test forward and backward propagation in spectrograph.
 
-        :param waves: simulation configuration
-        :param complex position: input (complex) coordinates
+        :param list waves: wavelength vector to be tested
+        :param complex position: input (complex) coordinates to be tested
         :param mode: observing mode (dispersion order or photometric band)
         :param bool verbose: verbose-mode
         :return: boolean result of the forward/backward test
@@ -2094,7 +2090,7 @@ class Spectrograph(object):
         # Initial guess simulation
         mpositions = self.predict_positions(simcfg)
         # Test compatibility with objective detector positions only once
-        mpositions.test_compatibility(positions)
+        mpositions.check_alignment(positions)
 
         rmss = []
         for mode in modes:
@@ -2145,14 +2141,14 @@ def is_spectred(mode):
 
 
 def str_mode(mode):
-    """'Order #X' or 'Band Y'."""
+    """String 'Order #X' or 'Band Y' from *mode*."""
 
     return "{}{}".format("Order #" if is_spectred(mode) else "Band ", mode)
 
 
 def rect2pol(position):
     r"""
-    Convert complex position :math:`x + jy` into modulus :math:`r` and
+    Convert complex position(s) :math:`x + jy` into modulus :math:`r` and
     phase :math:`\phi`.
 
     :param complex position: 2D-position(s) :math:`x + jy`
@@ -2202,7 +2198,7 @@ def dump_mpld3(fig, filename):
 
 def dump_bokeh(fig, filename):
     """
-    Dump figure *fig* to `bokeh <http://bokeh.pydata.org/>`_ HTML-file.
+    Dump figure to `bokeh <http://bokeh.pydata.org/>`_ HTML-file.
 
     .. WARNING:: Bokeh-0.11 does not yet convert properly the figure.
     """

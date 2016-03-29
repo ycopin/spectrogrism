@@ -44,7 +44,7 @@ extensions = [
 autoclass_content = "both"              # Insert class and __init__ docstrings
 autodoc_member_order = "bysource"       # Keep source order
 
-# Using mocks for libraries that depend on C modules
+# Using mocks for libraries that depend on C modules (or use requirements.txt)
 #autodoc_mock_imports = ['numpy', 'matplotlib', 'matplotlib.pyplot',
 #                        'seaborn', 'yaml', 'pandas']
 
@@ -231,6 +231,9 @@ latex_elements = {
 \usepackage{inconsolata}
 
 \DeclareUnicodeCharacter{212B}{\AA}
+
+\usepackage{alphalph}
+\renewcommand{\thefootnote}{\alphalph{\value{footnote}}}
 """,
 }
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-03-23 01:08 ycopin@lyonovae03.in2p3.fr>
+# Time-stamp: <2016-03-23 11:13:48 ycopin>
 
 """
 nisp
@@ -82,9 +82,9 @@ NISP_R.update([
 class ZemaxPositions(S.DetectorPositions):
 
     """
-    Zemax simulations, in spectroscopic or photometric mode.
+    Zemax simulated positions, in spectroscopic or photometric mode.
 
-    Zemax configuration modes:
+    Zemax configuration modes ('confNB'):
 
     * 1: B-grism (NISP-S)
     * 2, 3, 4: R-grisms (NISP-S)
@@ -217,7 +217,8 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
 
     def get_simcfg(self):
         """
-        Generate a :class:`SimConfig` corresponding to current simulation.
+        Generate a :class:`spectrogrism.spectrogrism.SimConfig`
+        corresponding to current simulation.
         """
 
         # Wavelengths [m]
@@ -237,7 +238,7 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         return S.SimConfig(simcfg)
 
     def plot_input(self, ax=None, **kwargs):
-        """Plot input coordinates (degrees)."""
+        """Plot input coordinates [deg]."""
 
         if ax is None:
             fig = P.figure()
@@ -255,7 +256,7 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         return ax
 
     def plot_output(self, ax=None, modes=None, subsampling=0, **kwargs):
-        """Plot output (detector) coordinates [mm]."""
+        """Plot output (detector-level) positions [mm]."""
 
         if modes is None:
             modes = self.modes
@@ -271,7 +272,7 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         return ax
 
     def plot_offsets(self, other, ax=None, mode=1, nwaves=3):
-        """Plot output (detector) coordinate offsets [px]."""
+        """Plot output (detector-level) coordinate offsets [px]."""
 
         if ax is None:
             fig = P.figure()
@@ -368,7 +369,7 @@ if __name__ == '__main__':
     # Spectroscopic modes ==============================
 
     spec_pos = spectro.predict_positions(simcfg, modes=zmx_pos.orders)
-    spec_pos.test_compatibility(zmx_pos)
+    spec_pos.check_alignment(zmx_pos)
 
     # Plots
     # ax = zmx_pos.plot_input()
@@ -428,7 +429,7 @@ if __name__ == '__main__':
     # Imagery modes ==============================
 
     phot_pos = spectro.predict_positions(simcfg, modes=zmx_pos.bands)
-    phot_pos.test_compatibility(zmx_pos)
+    phot_pos.check_alignment(zmx_pos)
 
     kwargs = dict(s=20, edgecolor='k', linewidths=1)  # Outlined symbols
     ax = zmx_pos.plot_output(modes=zmx_pos.bands, **kwargs)
