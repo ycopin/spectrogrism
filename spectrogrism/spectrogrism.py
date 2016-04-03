@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-03-23 11:11:34 ycopin>
+# Time-stamp: <2016-03-30 17:58 ycopin@lyonovae03.in2p3.fr>
 
 """
 spectrogrism
@@ -15,8 +15,6 @@ Generic utilities for modeling grism-based spectrograph.
    Spectrum
    PointSource
    DetectorPositions
-   ChromaticDistortion
-   GeometricDistortion
    Material
    CameraOrCollimator
    Collimator
@@ -41,6 +39,8 @@ import cmath as C
 
 import numpy as N
 import pandas as PD
+
+from . import distortion as D
 
 # Print options
 LINEWIDTH = 70
@@ -539,291 +539,6 @@ class DetectorPositions(PD.Panel):
         return ((offsets.values ** 2).mean(axis=None) ** 0.5)
 
 
-class ChromaticDistortion(object):
-
-    """
-    A polynomial description of Transverse Chromatic Distortion.
-
-    The Transverse Chromatic Aberration (so-called *lateral color*)
-    occurs when different wavelengths are focused at different positions
-    in the focal plane.
-
-    **Reference:** `Chromatic aberration
-    <https://en.wikipedia.org/wiki/Chromatic_aberration>`_
-
-    **See also:** Klein, Brauers & Aach, 2010, for a more detailed modeling of
-    Transversal Chromatic Aberrations.
-
-    .. autosummary::
-
-       coeffs
-       amplitude
-    """
-
-    def __init__(self, wref=0, coeffs=[]):
-        """
-        Initialize from reference wavelength and lateral color coefficients.
-
-        .. math::
-
-           dr = \sum_{i=1}^N c_i (\lambda - \lambda_{\mathrm{ref}})^i
-
-        Note that :math:`c_0 = 0`.
-
-        :param float wref: reference wavelength :math:`\lambda_{\mathrm{ref}}` [m]
-        :param list coeffs: lateral color coefficients :math:`[c_{i=1, \ldots N}]`
-        """
-
-        self.wref = wref               #: Reference wavelength [m]
-        self._poly = N.polynomial.Polynomial([0] + list(coeffs))
-
-    @property
-    def coeffs(self):
-        """Expose non-null coefficients (i.e. :math:`[c_{i \geq 1}]`)"""
-
-        return self._poly.coef[1:]  # ndarray
-
-    def __nonzero__(self):
-
-        return self.coeffs.any()
-
-    def __str__(self):
-
-        if self.__nonzero__():
-            s = ("Chromatic distortion: lref={:.2f} µm, coeffs=[{}]"
-                 .format(self.wref / 1e-6,
-                         ', '.join( '{:+g}'.format(coeff)
-                                    for coeff in self.coeffs )))
-        else:
-            s = "Null chromatic distortion"
-
-        return s
-
-    def amplitude(self, wavelengths):
-        """
-        Compute amplitude of the (radial) chromatic distortion.
-
-        :param numpy.ndarray wavelengths: wavelengths [m]
-        :return: lateral color radial amplitude
-        """
-
-        return self._poly(wavelengths - self.wref)
-
-
-class GeometricDistortion(object):
-
-    r"""
-    Brown-Conrady (achromatic) distortion model.
-
-    .. math::
-
-       x_d &= x_u \times (1 + K_1 r^2 + K_2 r^4 + \ldots) \\
-       &+ \left(P_2(r^2 + 2x_u^2) + 2P_1 x_u y_u\right)
-       (1 + P_3 r^2 + P_4 r^4 + \ldots) \\
-       y_d &= y_u \times (1 + K_1r^2 + K_2r^4 + \ldots) \\
-       &+ \left(P_1(r^2 + 2y_u^2) + 2P_2 x_u y_u\right)
-       (1 + P_3 r^2 + P_4 r^4 + \ldots)
-
-    where:
-
-    - :math:`x_u + j y_u` is the undistorted complex position,
-    - :math:`x_d + j y_d` is the distorted complex position,
-    - :math:`r^2 = (x_u - x_0)^2 + (y_u - y_0)^2`,
-    - :math:`x_0 + j y_0` is the complex center of distortion.
-
-    The K-coefficients (resp. P-coefficients) model the *radial*
-    (resp. *tangential*) distortion.
-
-    **Reference:** `Optical distortion
-    <https://en.wikipedia.org/wiki/Distortion_%28optics%29>`_
-
-    .. autosummary::
-
-       forward
-       backward
-    """
-
-    def __init__(self, center=0, Kcoeffs=[], Pcoeffs=[]):
-        """
-        Initialize from center of distortion and K- and P-coefficients.
-
-        :param complex center: complex position of center of distortion [m]
-        :param list Kcoeffs: radial distortion coefficients
-        :param list Pcoeffs: tangential distortion coefficients
-        """
-
-        self.center = complex(center)
-
-        # Radial polynom
-        self._polyk = N.polynomial.Polynomial([1] + list(Kcoeffs))
-        self.p1 = Pcoeffs[0] if len(Pcoeffs) >= 1 else 0
-        self.p2 = Pcoeffs[1] if len(Pcoeffs) >= 2 else 0
-        # Tangential polynom
-        self._polyp = N.polynomial.Polynomial([1] + list(Pcoeffs)[2:])
-
-    @property
-    def Kcoeffs(self):
-
-        return self._polyk.coef[1:]       # ndarray
-
-    @property
-    def Pcoeffs(self):
-
-        coeffs = [self.p1, self.p2] + self._polyp.coef[1:].tolist()  # list
-        if not any(coeffs):
-            coeffs = []
-
-        return N.array(coeffs)            # ndarray
-
-    def __nonzero__(self):
-
-        return self.Kcoeffs.any() or self.Pcoeffs.any()
-
-    def __str__(self):
-
-        if self.__nonzero__():
-            s = ("Geometric distortion: "
-                 "center=({:+.3f}, {:+.3f}) mm, K-coeffs={}, P-coeffs={}"
-                 .format(self.x0 / 1e-3, self.y0 / 1e-3,
-                         self.Kcoeffs, self.Pcoeffs))
-        else:
-            s = "Null geometric distortion"
-
-        return s
-
-    @property
-    def x0(self):
-
-        return self.center.real
-
-    @x0.setter
-    def x0(self, x0):
-
-        self.center = x0 + 1j * self.center.imag
-
-    @property
-    def y0(self):
-
-        return self.center.imag
-
-    @y0.setter
-    def y0(self, y0):
-
-        self.center = self.center.real + 1j * y0
-
-    def forward(self, xyu):
-        """
-        Apply distortion to undistorted complex positions.
-        """
-
-        xy = xyu - self.center            # Relative complex positions
-        r2 = N.abs(xy) ** 2               # Undistorted radii squared
-        xu, yu = xy.real, xy.imag         # Undistorted coordinates
-
-        xd = N.copy(xu)                   # Distorted coordinates
-        yd = N.copy(yu)
-
-        if self.Kcoeffs.any():            # Radial distortion
-            polyk_r2 = self._polyk(r2)    # Polynomial in r²
-            xd *= polyk_r2
-            yd *= polyk_r2
-
-        if self.Pcoeffs.any():            # Tangential distortion
-            polyp_r2 = self._polyp(r2)    # Polynomial in r²
-            two_xuyu = 2 * xu * yu
-            xd += (self.p2 * (r2 + 2 * xu ** 2) + self.p1 * two_xuyu) * polyp_r2
-            yd += (self.p1 * (r2 + 2 * yu ** 2) + self.p2 * two_xuyu) * polyp_r2
-
-        return xd + 1j * yd               # Distorted complex positions
-
-    def backward(self, xyd):
-        """
-        Correct distortion from distorted complex positions.
-        """
-
-        import scipy.optimize as SO
-
-        def fun(x_y):
-            """
-            SO.root works on real functions only: we convert N complex
-            2D-positions to and fro 2N real vector.
-            """
-
-            x, y = N.array_split(x_y, 2)                  # (2n,) ℝ → 2×(n,) ℝ
-            off = self.forward(x + 1j * y) - xyd.ravel()  # (n,) ℂ
-            return N.concatenate((off.real, off.imag))    # (n,) ℂ → (2n,) ℝ
-
-        xyd = N.atleast_1d(xyd)
-        xd, yd = xyd.real.ravel(), xyd.imag.ravel()       # → 2×(n,) ℝ
-        result = SO.root(fun, N.concatenate((xd, yd)))
-
-        if not result.success:
-            raise RuntimeError("GeometricDistortion model is not invertible.")
-
-        xu, yu = N.array_split(result.x, 2)               # → 2×(n,) ℝ
-
-        return (xu + 1j * yu).reshape(xyd.shape).squeeze()
-
-    def plot(self, xy=None, ax=None):
-        """
-        Plot distortions for a 2D-grid of complex positions.
-        """
-
-        import matplotlib.pyplot as P
-
-        if xy is None:
-            x = N.linspace(-1.5, 1.5, 13)   # Default grid
-            xx, yy = N.meshgrid(x, x)
-            xy = xx + 1j * yy               # Undistorted positions
-        else:
-            assert N.ndim(xy) == 2, "Invalid input grid"
-
-        xyd = self.forward(xy)              # Distorted positions
-
-        # Test
-        try:
-            test = N.allclose(self.backward(xyd), xy)
-        except RuntimeError as err:  # Could not invert distortion
-            warnings.warn(str(err))
-        else:
-            if not test:
-                warnings.warn("GeometricDistortion inversion is invalid.")
-
-        if ax is None:
-            fig = P.figure()
-            title = ' '.join((
-                "K-coeffs={} ".format(self.Kcoeffs)
-                if self.Kcoeffs.any() else '',
-                "P-coeffs={}".format(self.Pcoeffs)
-                if self.Pcoeffs.any() else ''))
-            ax = fig.add_subplot(1, 1, 1,
-                                 title=title,
-                                 xlabel="x", ylabel="y")
-
-        def plot_grid(ax, xy, label=None, color='k'):
-            for xx, yy in zip(xy.real, xy.imag):
-                ax.plot(xx, yy,
-                        color=color, marker='.', label=label)
-                if label:                 # Only one label
-                    label = None
-            for xx, yy in zip(xy.T.real, xy.T.imag):
-                ax.plot(xx, yy,
-                        color=color, marker='.', label='_')
-
-        # Undistorted positions
-        plot_grid(ax, xy, label='Undistorted', color='0.8')
-        # Distorted grid
-        plot_grid(ax, xyd, label='Distorted', color='k')
-        # Center of distortion
-        ax.plot([self.center.real], [self.center.imag],
-                ls='None', marker='*', ms=10, label='Center')
-        ax.set_aspect('equal', adjustable='datalim')
-        ax.legend(loc='lower left', fontsize='small',
-                  frameon=True, framealpha=0.5, title='')
-
-        return ax
-
-
 class Material(object):
 
     """
@@ -922,23 +637,23 @@ class CameraOrCollimator(object):
         Initialize the optical component from optical parameters.
 
         :param float flength: focal length [m]
-        :param GeometricDistortion gdist: geometric distortion
-        :param ChromaticDistortion cdist: chromatic distortion (lateral color)
+        :param D.GeometricDistortion gdist: geometric distortion
+        :param D.ChromaticDistortion cdist: chromatic distortion (lateral color)
         """
 
         self.flength = float(flength)              #: Focal length [m]
 
         if gdist is not None:
-            assert isinstance(gdist, GeometricDistortion), \
+            assert isinstance(gdist, D.GeometricDistortion), \
                 "gdist should be a GeometricDistortion."
         else:
-            gdist = GeometricDistortion()       # Null geometric distortion
+            gdist = D.GeometricDistortion()       # Null geometric distortion
 
         if cdist is not None:
-            assert isinstance(cdist, ChromaticDistortion), \
+            assert isinstance(cdist, D.ChromaticDistortion), \
                 "cdist should be a ChromaticDistortion."
         else:
-            cdist = ChromaticDistortion()       # Null lateral color
+            cdist = D.ChromaticDistortion()       # Null lateral color
 
         self.gdist = gdist      #: Geometric distortion
         self.cdist = cdist      #: Chromatic distortion (lateral color)
@@ -1014,8 +729,8 @@ class Collimator(CameraOrCollimator):
                 "Invalid configuration file: missing key {!r}"
                 .format(err.args[0]))
         else:
-            gdist = GeometricDistortion(0, [dist_K1])
-            cdist = ChromaticDistortion(config.wref, lcoeffs)
+            gdist = D.GeometricDistortion(0, [dist_K1])
+            cdist = D.ChromaticDistortion(config.wref, lcoeffs)
 
         super(Collimator, self).__init__(flength, gdist, cdist)
         self.gdist_K1 = dist_K1  # Backward compatibility
@@ -1111,8 +826,8 @@ class Camera(CameraOrCollimator):
                 "Invalid configuration file: missing key {!r}"
                 .format(err.args[0]))
         else:
-            gdist = GeometricDistortion(0, [dist_K1])
-            cdist = ChromaticDistortion(config.wref, lcoeffs)
+            gdist = D.GeometricDistortion(0, [dist_K1])
+            cdist = D.ChromaticDistortion(config.wref, lcoeffs)
 
         super(Camera, self).__init__(flength, gdist, cdist)
         self.gdist_K1 = dist_K1  # Backward compatibility
@@ -1193,7 +908,7 @@ class Telescope(Camera):
                 "Invalid configuration file: missing key {!r}"
                 .format(err.args[0]))
         else:
-            gdist = GeometricDistortion(0, [dist_K1])
+            gdist = D.GeometricDistortion(0, [dist_K1])
 
         # Initialize from CameraOrCollimator parent class
         super(Camera, self).__init__(flength, gdist, cdist=None)

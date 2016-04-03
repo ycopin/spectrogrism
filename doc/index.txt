@@ -106,6 +106,16 @@ Positions and directions
 * A 3D-direction is encoded by the coordinates of the unit-vector :math:`(x, y,
   z)`.
 
+Distortions
+-----------
+
+* A :class:`distortion.StructuredGrid` is a structured grid of
+  (complex) 2D-positions, with plotting and distortion-adjustment
+  facilities.
+* :class:`distortion.GeometricDistortion` implements the Brown-Conrady
+  (achromatic) distortion model.
+* :class:`distortion.ChromaticDistortion` is a minimal lateral-color
+  distortion implementation.
 
 Near Infrared Spectrometer and Photometer (NISP)
 ------------------------------------------------
@@ -178,6 +188,7 @@ Code documentation
    :maxdepth: 2
 
    spectrogrism
+   distortion
    snifs
    nisp
 
@@ -191,5 +202,7 @@ Example notebooks
 
    SNIFS-R
    NISP-S
-   distortions
+   distExpansion
+   distTriangulate
+   NISP_distortions
 

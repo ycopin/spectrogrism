@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-# Time-stamp: <2016-03-01 10:39:54 ycopin>
+# Time-stamp: <2016-03-31 12:23:25 ycopin>
 
 from setuptools import setup
 
 name = 'spectrogrism'
-version = '0.6'
+version = '0.7'
 
 cmdclass = {}
 command_options = {}

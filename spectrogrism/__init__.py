@@ -6,5 +6,6 @@
 __version__ = '0.6'
 
 from . import spectrogrism
-from . import nisp
+from . import distortion
 from . import snifs
+from . import nisp

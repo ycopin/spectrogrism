@@ -1,0 +1,3 @@
+.. automodule:: spectrogrism.distortion
+   :members:
+   :undoc-members:
