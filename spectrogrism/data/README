@@ -1,3 +1,7 @@
+Date: Wed, 22 Apr 2015 13:11:41 +0200
+From: Julien Zoubian <zoubian@cppm.in2p3.fr>
+Subject: Re: Reunion demain PSF
+
 J'ai utilisé le fichier zemax A006_Results/10_045_006_a_MC_T0009.ZMX
 et la conf 2. En PJ une image des points calculés.  Chaque point
 correspond à la position du centroid de la psf dans le plan focal
@@ -40,3 +44,28 @@ n'est pas le centroid de la psf)
 20 r_EE90_mm rayon encerclant 90% de l’énergie de la psf [mm]
 21 psf_ell ellipticité de la PSF
 22 psf_angle angle de la PSF [deg]
+
+* run_190315.dat           Ordre 1
+* run_011115_conf2_o0.dat  Ordre 0
+* run_161115_conf2_o2.dat  Ordre 2
+* run_071215_conf6_J.dat   Bande J
+
+--------------------------------------------------
+
+From: Julien Zoubian <zoubian@cppm.in2p3.fr>
+Subject: zemax model 95%
+Date: Tue, 5 Apr 2016 10:08:54 +0200
+
+Voici les premiers résultats pour un des deux modèles zemax "à  95%",
+(le 128).
+
+En PJ les fichiers .dat, pour l'ordre 1 et 0 avec la conf 2 (GR), même
+format que précédemment.
+
+Au sujet de la couverture en longueur d'onde, une des macro zemax était
+limité (en dure dans le code python qui m'a été fournit).
+J'ai étendu la couverture en longueur d'onde [0.9, 2.0]um mais je ne
+sais pas si il y avait un raison à cette limitation.
+
+* run_220216_conf2_o0.dat
+* run_220216_conf2_o1.dat

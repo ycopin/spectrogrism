@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-04-04 00:17 ycopin@lyonovae03.in2p3.fr>
+# Time-stamp: <2016-04-06 22:07 ycopin@lyonovae03.in2p3.fr>
 
 """
 distortion
@@ -50,21 +50,21 @@ class StructuredGrid(object):
         return s
 
     @classmethod
-    def create(cls, nx, ny, scale='auto', offset=0, rotation=0.):
+    def create(cls, nx, ny, step='auto', offset=0, rotation=0.):
         u"""
         Create a regular rectangular grid.
         """
 
         assert (nx, ny) >= (2, 2), "Invalid grid size."
-        if scale == 'auto':     # Grid extent will be ~ ± 1
-            scale = 2 / (nx * ny)**0.5
+        if step == 'auto':     # Grid extent will be ~ ± 1
+            step = 2 / (nx * ny)**0.5
 
         x = N.arange(nx) - (nx - 1)/2.
         y = N.arange(ny) - (ny - 1)/2.
         xx, yy = N.meshgrid(x, y)
         xy = xx + 1j * yy
-        if scale != 1:
-            xy *= scale
+        if step != 1:
+            xy *= step
         if rotation:
             xy *= N.exp(1j*rotation)
         if offset:
@@ -202,7 +202,7 @@ class StructuredGrid(object):
         :param bool rescale: rescale long edges
             (not trustworthy for significantly distorted grid)
         :param matplotlib.pyplot.Figure fig: produde a control plot if not None
-        :return: (side length, rotation [rad],
+        :return: (step, rotation [rad],
             complex offset, complex center of distortion)
         """
 
@@ -243,14 +243,14 @@ class StructuredGrid(object):
         # edges) to estimate undistorted grid parameters
         ncen = int(len(edges) * frac)     # Nb of central edges
         shortests = edges[iedges[:ncen]]  # ncen × [start, end] × [x, y]
-        length = N.median(lengths[iedges[:ncen]])   # Undistorted side
-        angle = N.median(angles[iedges[:ncen]])     # Undistorted angle
+        step = N.median(lengths[iedges[:ncen]])     # Undistorted grid step
+        angle = N.median(angles[iedges[:ncen]])     # Undistorted grid angle
         center = N.complex(
             *N.mean(shortests, axis=(0, 1)))  # Center of distortion (complex)
 
         # Reference grid
         ref = StructuredGrid.create(self.nx, self.ny,
-                                    scale=length, rotation=angle)
+                                    step=step, rotation=angle)
         ref.reorder(self.signature)
         offsets = (self.xy - ref.xy).ravel()
 
@@ -301,7 +301,7 @@ class StructuredGrid(object):
             axl.hist([lengths[~diags], lengths[diags]],
                      bins=30, stacked=True, histtype='stepfilled',
                      label=['Short', u'Long/√2'])
-            axl.axvline(length, c='k', lw=2)
+            axl.axvline(step, c='k', lw=2)
 
             # Angle histogram
             axa.hist([N.rad2deg(angles[~diags]),
@@ -310,7 +310,7 @@ class StructuredGrid(object):
                      label=['Short', u'Long - 45°'])
             axa.axvline(N.rad2deg(angle), c='k', lw=2)
 
-        return length, angle, offset, center
+        return step, angle, offset, center
 
     def rms(self, xy):
         """
@@ -403,8 +403,8 @@ class StructuredGrid(object):
             parameters += ['dx', 'dy']
             # Estimate offset step size from offset RMS
             offstep = self.rms(other.xy)
-            kwargs.update((('dx', 0), ('error_dx', offset),
-                           ('dy', 0), ('error_dy', offset)))
+            kwargs.update((('dx', 0), ('error_dx', offstep),
+                           ('dy', 0), ('error_dy', offstep)))
 
         # Additional Minuit options
         kwargs.update(**options)
@@ -425,11 +425,11 @@ class StructuredGrid(object):
         import matplotlib.pyplot as P
 
         uscale, uname = units   # (float, str)
-        ustr = ' [{}]'.format(uname) if uname else ''
 
         rms = self.rms(other.xy) / uscale  # [unit]
 
         if ax is None:
+            ustr = ' [{}]'.format(uname) if uname else ''
             fig = P.figure()
             ax = fig.add_subplot(1, 1, 1,
                                  xlabel="x{}".format(ustr),
@@ -441,10 +441,12 @@ class StructuredGrid(object):
         q = ax.quiver(other.x / uscale, other.y / uscale,
                       dxy.real, dxy.imag)
         scale = "{:.1g}".format(rms)
-        ax.quiverkey(q, 0.95, 0.95, float(scale), scale,
+        ustr = ' {}'.format(uname) if uname else ''
+        ax.quiverkey(q, 0.95, 0.95, float(scale), "{}{}".format(scale, ustr),
                      labelpos='W', coordinates='figure')
 
         return ax
+
 
 class GeometricDistortion(object):
 
@@ -792,7 +794,7 @@ if __name__ == '__main__':
     from iminuit.frontends import ConsoleFrontend
 
     # Initial grid
-    grid = StructuredGrid.create(15, 15, scale=1, rotation=N.deg2rad(5.))
+    grid = StructuredGrid.create(15, 15, step=1., rotation=N.deg2rad(5.))
 
     # Add distortions
     gdist = GeometricDistortion(3 + 4j,
@@ -803,7 +805,7 @@ if __name__ == '__main__':
     length, angle, offset, center = grid.estimate_parameters(fig=False)
 
     refgrid = StructuredGrid.create(grid.nx, grid.ny,
-                                    scale=length, rotation=angle, offset=offset)
+                                    step=length, rotation=angle, offset=offset)
     refgrid.reorder(grid.signature)
 
     refrms = refgrid.rms(grid.xy)
