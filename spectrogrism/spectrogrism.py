@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-03-30 17:58 ycopin@lyonovae03.in2p3.fr>
+# Time-stamp: <2016-04-07 07:50 ycopin@lyonovae03.in2p3.fr>
 
 """
 spectrogrism
@@ -577,6 +577,8 @@ class Material(object):
              -0.0112765,     0.0263791,   557.682],
         EPB=[ 0.406836,      1.03517,      -0.140328,
              -0.0247382,     0.0261501,   798.366],
+        # Null material (refractive index = 1)
+        null=[0, 0, 0, 0, 0, 0],
     )
 
     def __init__(self, name):
@@ -592,7 +594,7 @@ class Material(object):
             self.coeffs = self.materials[name]
         except KeyError:
             raise KeyError("Unknown material {}".format(name))
-        self.name = name  #: Name of the material
+        self.name = name        #: Name of the material
 
     def __str__(self):
 
@@ -612,6 +614,9 @@ class Material(object):
         :return: refractive index
         """
 
+        if self.name == 'null':
+            return N.ones_like(wavelengths)
+
         lmu2 = (wavelengths / 1e-6) ** 2        # (wavelength [µm])**2
         n2m1 = N.sum([ b / (1 - c / lmu2)       # n**2 - 1
                        for b, c in zip(self.coeffs[:3], self.coeffs[3:]) ],
@@ -622,10 +627,56 @@ class Material(object):
 
 # Optical element classes =================================
 
+class Lens(object):
+
+    """
+    Convert a 2D-position into a 2D-position.
+
+    .. autosummary:
+
+       forward
+       backward
+    """
+
+    def __init__(self, gamma, gdist=None, cdist=None):
+        """
+        Initialize the element from its optical parameters.
+
+        :param float gamma: transverse 'grandissement'
+        :param D.GeometricDistortion gdist: geometric distortion
+        :param D.ChromaticDistortion cdist: chromatic distortion (lateral color)
+        """
+
+        self.gamma = float(gamma)              #: Transverse 'grandissement'
+
+        if gdist is not None:
+            assert isinstance(gdist, D.GeometricDistortion), \
+                "gdist should be a GeometricDistortion."
+        else:
+            gdist = D.GeometricDistortion()        # Null geometric distortion
+
+        if cdist is not None:
+            assert isinstance(cdist, D.ChromaticDistortion), \
+                "cdist should be a ChromaticDistortion."
+        else:
+            cdist = D.ChromaticDistortion()        # Null lateral color
+
+        self.gdist = gdist              #: Geometric distortion
+        self.cdist = cdist              #: Chromatic distortion (lateral color)
+
+    def forward(self, positions):
+
+        raise NotImplementedError()
+
+    def backward(self, positions):
+
+        raise NotImplementedError()
+
+
 class CameraOrCollimator(object):
 
     """
-    An optical system converting to and fro directions and positions.
+    An optical element converting to and fro directions and positions.
 
     .. autosummary::
 
@@ -634,7 +685,7 @@ class CameraOrCollimator(object):
 
     def __init__(self, flength, gdist=None, cdist=None):
         """
-        Initialize the optical component from optical parameters.
+        Initialize the element from its optical parameters.
 
         :param float flength: focal length [m]
         :param D.GeometricDistortion gdist: geometric distortion
@@ -647,20 +698,20 @@ class CameraOrCollimator(object):
             assert isinstance(gdist, D.GeometricDistortion), \
                 "gdist should be a GeometricDistortion."
         else:
-            gdist = D.GeometricDistortion()       # Null geometric distortion
+            gdist = D.GeometricDistortion()        # Null geometric distortion
 
         if cdist is not None:
             assert isinstance(cdist, D.ChromaticDistortion), \
                 "cdist should be a ChromaticDistortion."
         else:
-            cdist = D.ChromaticDistortion()       # Null lateral color
+            cdist = D.ChromaticDistortion()        # Null lateral color
 
-        self.gdist = gdist      #: Geometric distortion
-        self.cdist = cdist      #: Chromatic distortion (lateral color)
+        self.gdist = gdist              #: Geometric distortion
+        self.cdist = cdist              #: Chromatic distortion (lateral color)
 
     def __str__(self):
 
-        s = "f={:.1f} m".format(self.flength)
+        s = "{}: f={:.1f} m".format(self.__class__.__name__, self.flength)
         s += '\n  {}'.format(self.gdist)
         s += '\n  {}'.format(self.cdist)
 
@@ -734,10 +785,6 @@ class Collimator(CameraOrCollimator):
 
         super(Collimator, self).__init__(flength, gdist, cdist)
         self.gdist_K1 = dist_K1  # Backward compatibility
-
-    def __str__(self):
-
-        return "Collimator: {}".format(super(Collimator, self).__str__())
 
     def forward(self, position, wavelengths, gamma):
         r"""
@@ -832,10 +879,6 @@ class Camera(CameraOrCollimator):
         super(Camera, self).__init__(flength, gdist, cdist)
         self.gdist_K1 = dist_K1  # Backward compatibility
 
-    def __str__(self):
-
-        return "Camera: {}".format(super(Camera, self).__str__())
-
     def forward(self, direction, wavelengths):
         r"""
         Forward light propagation through the camera.
@@ -913,10 +956,6 @@ class Telescope(Camera):
         # Initialize from CameraOrCollimator parent class
         super(Camera, self).__init__(flength, gdist, cdist=None)
         self.gdist_K1 = dist_K1  # Backward compatibility
-
-    def __str__(self):
-
-        return "Telescope:  {}".format(super(Camera, self).__str__())
 
 
 class Prism(object):
@@ -1850,7 +1889,10 @@ class Spectrograph(object):
 
 
 def is_spectred(mode):
-    """Is observational *mode* a spectroscopic (int) or photometric (str) mode?"""
+    """
+    Is observational *mode* a spectroscopic (int-like) or photometric
+    (str-like) mode?
+    """
 
     return not isinstance(mode, basestring)
 

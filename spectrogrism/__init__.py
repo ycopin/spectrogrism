@@ -3,9 +3,10 @@
 # __version__ = pkg_resources.require("spectrogrism")[0].version
 # del pkg_resources
 
-__version__ = '0.6'
+__version__ = '0.7'
 
 from . import spectrogrism
 from . import distortion
+from . import polyfit
 from . import snifs
 from . import nisp
