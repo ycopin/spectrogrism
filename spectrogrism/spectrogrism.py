@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-04-07 07:50 ycopin@lyonovae03.in2p3.fr>
+# Time-stamp: <2016-05-02 18:50:45 ycopin>
 
 """
 spectrogrism
@@ -16,6 +16,7 @@ Generic utilities for modeling grism-based spectrograph.
    PointSource
    DetectorPositions
    Material
+   Lens
    CameraOrCollimator
    Collimator
    Camera

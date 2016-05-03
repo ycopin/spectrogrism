@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-04-06 22:07 ycopin@lyonovae03.in2p3.fr>
+# Time-stamp: <2016-05-03 19:12:18 ycopin>
 
 """
 distortion
@@ -53,6 +53,12 @@ class StructuredGrid(object):
     def create(cls, nx, ny, step='auto', offset=0, rotation=0.):
         u"""
         Create a regular rectangular grid.
+
+        :param int nx: number of steps in *x*
+        :param int ny: number of steps in *y*
+        :param step: fixed (float) or automatic ('auto') stepsize
+        :param complex offset: grid offset
+        :param float rotation: grid angle [rad]
         """
 
         assert (nx, ny) >= (2, 2), "Invalid grid size."
@@ -353,24 +359,16 @@ class StructuredGrid(object):
             gdist.Pcoeffs = args[last:last + npcoeff]  # P-coeffs
             last += npcoeff
             if scale:
-                _scale = args[last]
+                gdist.scale = args[last]
                 last += 1
-            else:
-                _scale = 1.
             if rotation:
-                _rotation = args[last]
+                gdist.rotation = args[last]
                 last += 1
-            else:
-                _rotation = 0.
             if offset:
-                _offset = complex(*args[last:last + 2])
+                gdist.offset = complex(*args[last:last + 2])
                 last += 2
-            else:
-                _offset = 0.
 
-            xy = self.xy * _scale * N.exp(1j*_rotation) + _offset
-
-            return (N.abs(gdist.forward(xy) - other.xy)**2).mean()  # RMS**2
+            return (N.abs(gdist.forward(self.xy) - other.xy)**2).mean()  # RMS**2
 
         # Objective function parameters
         parameters = ['x0', 'y0'] + \
@@ -409,24 +407,26 @@ class StructuredGrid(object):
         # Additional Minuit options
         kwargs.update(**options)
 
+        # Minuit optimizer
         minuit = Minuit(objfun, **kwargs)
         if kwargs.get('print_level', 0):
             minuit.print_param()
 
+        # Optimization
         minuit.migrad()
 
         return minuit
 
     def plot_offsets(self, other, ax=None, units=(1, '')):
         """
-        Plot offset between current and other grid (used as reference).
+        Plot offset between *self* and *other* grid (used as reference).
         """
 
         import matplotlib.pyplot as P
 
         uscale, uname = units   # (float, str)
 
-        rms = self.rms(other.xy) / uscale  # [unit]
+        rms = self.rms(other.xy) / uscale  # Offset RMS [unit]
 
         if ax is None:
             ustr = ' [{}]'.format(uname) if uname else ''
@@ -437,12 +437,15 @@ class StructuredGrid(object):
                                  title="RMS = {:.4g} {}".format(rms, uname))
             ax.set_aspect('equal', adjustable='datalim')
 
+        # Offset plot
         dxy = (self.xy - other.xy) / uscale
         q = ax.quiver(other.x / uscale, other.y / uscale,
                       dxy.real, dxy.imag)
+
+        # Quiver key
         scale = "{:.1g}".format(rms)
         ustr = ' {}'.format(uname) if uname else ''
-        ax.quiverkey(q, 0.95, 0.95, float(scale), "{}{}".format(scale, ustr),
+        ax.quiverkey(q, 0.85, 0.95, float(scale), "{}{}".format(scale, ustr),
                      labelpos='W', coordinates='figure')
 
         return ax
@@ -481,7 +484,8 @@ class GeometricDistortion(object):
        backward
     """
 
-    def __init__(self, center=0, Kcoeffs=[], Pcoeffs=[]):
+    def __init__(self, center=0, Kcoeffs=[], Pcoeffs=[],
+                 scale=1, rotation=0, offset=0):
         """
         Initialize from center of distortion and K- and P-coefficients.
 
@@ -489,9 +493,12 @@ class GeometricDistortion(object):
         :param list Kcoeffs: radial distortion coefficients
         :param list Pcoeffs: tangential distortion coefficients
             (empty or length >= 2)
+        :param float scale: scaling to be applied to input coordinates
+        :param float rotation: rotation to be applied to input coordinates [rad]
+        :param complex offset: offset to be applied to input coordinates [m]
         """
 
-        self.center = complex(center)
+        self.center = complex(center)     #: Center of distortion (complex) [m]
 
         # Radial component
         self._polyk = N.polynomial.Polynomial([1] + list(Kcoeffs))
@@ -504,6 +511,10 @@ class GeometricDistortion(object):
             self._polyp = N.polynomial.Polynomial([1] + list(Pcoeffs)[2:])
         else:
             self._polyp = None  # Will be used as a flag
+
+        self.scale = float(scale)         #: Coordinate scaling
+        self.rotation = float(rotation)   #: Coordinate rotation [rad]
+        self.offset = complex(offset)     #: Coordinate complex offset [m]
 
     @classmethod
     def from_kwargs(cls, **kwargs):
@@ -523,7 +534,12 @@ class GeometricDistortion(object):
         else:
             Pcoeffs = [ kwargs.pop('P'+str(i), 0) for i in range(1, pmax + 1) ]
 
-        return cls(center, Kcoeffs=Kcoeffs, Pcoeffs=Pcoeffs)
+        scale = kwargs.pop('scale', 1)
+        rotation = kwargs.pop('rotation', 0)
+        offset = complex(kwargs.pop('dx', 0), kwargs.pop('dy', 0))
+
+        return cls(center, Kcoeffs=Kcoeffs, Pcoeffs=Pcoeffs,
+                   scale=scale, rotation=rotation, offset=offset)
 
     @property
     def Kcoeffs(self):
@@ -595,12 +611,22 @@ class GeometricDistortion(object):
 
         self.center = self.center.real + 1j * y0
 
+    def rescale(self, xy):
+        """Rescale input complex positions."""
+
+        return xy * self.scale * N.exp(1j*self.rotation) + self.offset
+
+    def unscale(self, xy):
+        """Unscale output complex positions."""
+
+        return (xy - self.offset) / self.scale / N.exp(1j*self.rotation)
+
     def forward(self, xyu):
         """
         Apply distortion to undistorted complex positions.
         """
 
-        xyr = xyu - self.center           # Relative complex positions
+        xyr = self.rescale(xyu) - self.center  # Relative complex positions
         r2 = N.abs(xyr) ** 2              # Undistorted radii squared
         xu, yu = xyr.real, xyr.imag       # Undistorted coordinates
 
@@ -629,6 +655,8 @@ class GeometricDistortion(object):
 
         import scipy.optimize as SO
 
+        xyd = self.unscale(N.atleast_1d(xyd))
+
         def fun(x_y):
             """
             SO.root works on real functions only: we convert N complex
@@ -639,7 +667,6 @@ class GeometricDistortion(object):
             off = self.forward(x + 1j * y) - xyd.ravel()  # (n,) ℂ
             return N.concatenate((off.real, off.imag))    # (n,) ℂ → (2n,) ℝ
 
-        xyd = N.atleast_1d(xyd)
         xd, yd = xyd.real.ravel(), xyd.imag.ravel()       # → 2×(n,) ℝ
         result = SO.root(fun, N.concatenate((xd, yd)))
 
