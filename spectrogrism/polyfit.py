@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-05-02 14:53:05 ycopin>
+# Time-stamp: <2016-05-17 22:31 ycopin@lyonovae03.in2p3.fr>
 
 from __future__ import division, print_function
 
-__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
-
 import astropy.modeling as AM
+
+__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
 
 
 def fit_legendre2D(x, y, z, deg=(2, 2)):
+    """
+    Fit a 2D-polynomial to *z(x, y)*.
+    """
 
     # Model: 2D Legendre polynomials
     p_init = AM.models.Legendre2D(*deg)

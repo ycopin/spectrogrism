@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-03-23 11:13:48 ycopin>
+# Time-stamp: <2016-05-17 17:32:52 ycopin>
 
 """
 nisp
@@ -14,13 +14,13 @@ NISP-specific tools, including a :class:`ZemaxPositions` handler.
 
 from __future__ import division, print_function, absolute_import
 
-__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
-
 import warnings
 
 import numpy as N
 import matplotlib.pyplot as P
 import pandas as PD
+
+__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
 
 if __name__ == "__main__":
     # Cannot import explicitely local spectrogrism using relative import

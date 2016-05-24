@@ -1,9 +1,4 @@
-# http://stackoverflow.com/questions/2058802
-# import pkg_resources            # part of setuptools
-# __version__ = pkg_resources.require("spectrogrism")[0].version
-# del pkg_resources
-
-__version__ = '0.7'
+__version__ = '0.8'
 
 from . import spectrogrism
 from . import distortion

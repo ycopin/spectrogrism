@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-05-03 19:12:18 ycopin>
+# Time-stamp: <2016-05-18 19:27:23 ycopin>
 
 """
 distortion
@@ -16,11 +16,11 @@ Distortion utilities.
 
 from __future__ import division, print_function
 
-__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
-
 import warnings
 
 import numpy as N
+
+__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
 
 
 class StructuredGrid(object):
@@ -51,7 +51,7 @@ class StructuredGrid(object):
 
     @classmethod
     def create(cls, nx, ny, step='auto', offset=0, rotation=0.):
-        u"""
+        """
         Create a regular rectangular grid.
 
         :param int nx: number of steps in *x*
@@ -105,10 +105,10 @@ class StructuredGrid(object):
         """
         Return a 4-character signature string such as 'x+y-'.
 
-        Standard order -- x increasing along 1st axis and y increasing
-        along 0th axis -- corresponds to 'x+y+'. 'y-x+' corresponds to
-        a transposed coordinate array, with y decreasing along the 1st
-        axis, and x increasing along the 0th axis.
+        Standard order -- *x* increasing along 1st axis and *y* increasing
+        along 0th axis -- corresponds to 'x+y+'.  'y-x+' corresponds to
+        a transposed coordinate array, with *y* decreasing along the 1st
+        axis, and *x* increasing along the 0th axis.
 
         Noting '+.' a mean finite difference where the real part is
         positive and larger (in absolute value) than the imaginary
@@ -368,7 +368,7 @@ class StructuredGrid(object):
                 gdist.offset = complex(*args[last:last + 2])
                 last += 2
 
-            return (N.abs(gdist.forward(self.xy) - other.xy)**2).mean()  # RMS**2
+            return (N.abs(gdist.forward(self.xy) - other.xy)**2).mean()  # RMS²
 
         # Objective function parameters
         parameters = ['x0', 'y0'] + \
@@ -467,13 +467,18 @@ class GeometricDistortion(object):
 
     where:
 
-    - :math:`x_u + j y_u` is the undistorted complex position,
-    - :math:`x_d + j y_d` is the distorted complex position,
-    - :math:`r^2 = (x_u - x_0)^2 + (y_u - y_0)^2`,
-    - :math:`x_0 + j y_0` is the complex center of distortion.
+    - :math:`z_u = x_u + j y_u` is the undistorted complex position,
+    - :math:`z_d = x_d + j y_d` is the distorted complex position,
+    - :math:`z_0 = x_0 + j y_0` is the complex center of distortion,
+    - :math:`r = |z_u - z_0|` is the undistorted distance to CoD.
 
     The K-coefficients (resp. P-coefficients) model the *radial*
     (resp. *tangential*) distortion.
+
+    Note there's a possibility to rescale (scale *s* + rotation
+    :math:`\alpha` + offset :math:`\delta z`) the input (undistorted)
+    positions *before* applying the distortion pattern (see
+    :func:`GeometricDistortion.rescale`).
 
     **Reference:** `Optical distortion
     <https://en.wikipedia.org/wiki/Distortion_%28optics%29>`_
@@ -612,18 +617,30 @@ class GeometricDistortion(object):
         self.center = self.center.real + 1j * y0
 
     def rescale(self, xy):
-        """Rescale input complex positions."""
+        r"""
+        Rescale input complex positions.
+
+        .. math::
+
+           z' = z \times s e^{j\alpha} + \delta z
+        """
 
         return xy * self.scale * N.exp(1j*self.rotation) + self.offset
 
     def unscale(self, xy):
-        """Unscale output complex positions."""
+        r"""
+        Unscale output complex positions.
+
+        .. math::
+
+           z = (z' - \delta z) / (s e^{j\alpha})
+        """
 
         return (xy - self.offset) / self.scale / N.exp(1j*self.rotation)
 
     def forward(self, xyu):
         """
-        Apply distortion to undistorted complex positions.
+        Apply distortion to undistorted (rescaled) positions.
         """
 
         xyr = self.rescale(xyu) - self.center  # Relative complex positions
@@ -648,34 +665,41 @@ class GeometricDistortion(object):
 
         return xyd                        # Distorted complex positions
 
-    def backward(self, xyd):
+    def backward(self, xyd, lcol=0):
         """
         Correct distortion from distorted complex positions.
+
+        Include a (single-wavelength) lateral color term if needed.
         """
 
         import scipy.optimize as SO
 
-        xyd = self.unscale(N.atleast_1d(xyd))
+        xyd = N.atleast_1d(xyd)
 
-        def fun(x_y):
+        def objf(x_y):
             """
-            SO.root works on real functions only: we convert N complex
-            2D-positions to and fro 2N real vector.
+            `SO.root` works on real functions only: we convert N complex
+            2D-positions to and fro 2N concatenated real vector.
             """
 
-            x, y = N.array_split(x_y, 2)                  # (2n,) ℝ → 2×(n,) ℝ
-            off = self.forward(x + 1j * y) - xyd.ravel()  # (n,) ℂ
-            return N.concatenate((off.real, off.imag))    # (n,) ℂ → (2n,) ℝ
+            xu, yu = N.array_split(x_y, 2)   # (2n,) ℝ → 2×(n,) ℝ
+            zu = xu + 1j * yu                # Undistorted position
+            zd = self.forward(zu)            # Modeled distorted position
+            zd += zu * lcol                  # Add lateral color
+            off = zd - xyd.ravel()           # Offsets (n,) ℂ
+            return N.concatenate((off.real, off.imag))  # (n,) ℂ → (2n,) ℝ
 
-        xd, yd = xyd.real.ravel(), xyd.imag.ravel()       # → 2×(n,) ℝ
-        result = SO.root(fun, N.concatenate((xd, yd)))
+        # Initial guess: start from distorted position
+        xd, yd = xyd.real.ravel(), xyd.imag.ravel()     # → 2×(n,) ℝ
+        result = SO.root(objf, N.concatenate((xd, yd)))
 
         if not result.success:
             raise RuntimeError("GeometricDistortion model is not invertible.")
 
-        xu, yu = N.array_split(result.x, 2)               # → 2×(n,) ℝ
+        xu, yu = N.array_split(result.x, 2)  # Adj. undist. pos. → 2×(n,) ℝ
+        zu = (xu + 1j * yu).reshape(xyd.shape).squeeze()
 
-        return (xu + 1j * yu).reshape(xyd.shape).squeeze()
+        return self.unscale(zu)  # Remove rescaling
 
     def plot(self, xy=None, ax=None):
         """
@@ -785,7 +809,7 @@ class ChromaticDistortion(object):
 
     def __nonzero__(self):
 
-        return self.coeffs.any()
+        return bool(self.coeffs.any())
 
     def __str__(self):
 
@@ -845,12 +869,12 @@ if __name__ == '__main__':
 
     dist = GeometricDistortion(center, Kcoeffs=[0.])
     minuit = refgrid.adjust_distortion(grid, dist,
-                                       #scale=True, rotation=True, offset=True,
+                                       # scale=True, rotation=True, offset=True,
                                        print_level=1,
                                        frontend=ConsoleFrontend())
 
     if minuit.migrad_ok():
-        adjrms = minuit.fval ** 0.5  # objfun is RMS**2
+        adjrms = minuit.fval ** 0.5    # objfun is RMS**2
         print("RMS wrt. adjusted grid: {}".format(adjrms))
 
         dist = GeometricDistortion.from_kwargs(**minuit.values)

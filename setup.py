@@ -1,10 +1,20 @@
 #!/usr/bin/env python
-# Time-stamp: <2016-03-31 12:23:25 ycopin>
+# Time-stamp: <2016-05-18 19:14:56 ycopin>
 
 from setuptools import setup
 
+
+def get_version(filename='spectrogrism/__init__.py'):
+    """Read version from __init__.py"""
+
+    with open(filename) as file:
+        for line in file:
+            if line.startswith('__version__'):
+                return eval(line.split('=')[-1])
+
+
 name = 'spectrogrism'
-version = '0.7'
+version = get_version()
 
 cmdclass = {}
 command_options = {}

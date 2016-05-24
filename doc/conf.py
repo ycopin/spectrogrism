@@ -15,12 +15,17 @@
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-# sys.path.insert(0, os.path.abspath('.'))
+import sys, os
+sys.path.insert(0, os.path.abspath('..'))
 
 # -- General configuration ------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
-#needs_sphinx = '1.4'
+needs_sphinx = '1.3'
+
+# If true, figures, tables and code-blocks are automatically numbered if they
+# have a caption. For now, it works only with the HTML builder.
+numfig = True
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
@@ -84,7 +89,9 @@ author = u'Yannick Copin'
 # built documents.
 #
 # The short X.Y version.
-version = '0.7'
+# import spectrogrism
+# version = spectrogrism.__version__
+from spectrogrism import __version__ as version
 # The full version, including alpha/beta/rc tags.
 release = version
 

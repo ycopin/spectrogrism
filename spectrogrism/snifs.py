@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-03-23 00:19 ycopin@lyonovae03.in2p3.fr>
+# Time-stamp: <2016-05-18 19:38:22 ycopin>
 
 """
 snifs
@@ -10,16 +10,16 @@ SNIFS optical configuration and utilities.
 
 from __future__ import division, print_function, absolute_import
 
-__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
-
 import warnings
 
 import numpy as N
 
+__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
+
 if __name__ == "__main__":
     # Cannot import explicitely local spectrogrism using relative import
     # in a script ("main"):
-    # from . import spectrogrism as S
+    # >>> from . import spectrogrism as S
     # ValueError: Attempted relative import in non-package
     import spectrogrism as S    # Import *local* spectrogrism module
 else:
@@ -29,7 +29,7 @@ else:
 SNIFS_R = S.OptConfig([
     ('name', "SNIFS-R"),                # Configuration name
     ('wave_ref', 0.76e-6),              # Reference wavelength [m]
-    ('wave_range', [0.5e-6, 1.02e-6]),  # Standard wavelength range [m]
+    ('wave_range', [0.5e-6, 1.0e-6]),   # Standard wavelength range [m]
     # Telescope
     ('telescope_flength', 22.5),        # Focal length [m]
     # Collimator
@@ -55,7 +55,7 @@ SNIFS_R = S.OptConfig([
 #: SNIFS simulation configuration
 SNIFS_SIMU = S.SimConfig([
     ('name', u"standard"),                 # Configuration name
-    ('wave_npx', 10),                      # Nb of pixels per spectrum
+    ('wave_npx', 6),                       # Nb of pixels per spectrum
     ('modes', (1, 0, 2, -1)),              # Dispersion orders
     # Focal plane sampling
     ('input_coords', N.linspace(-1e-2, 1e-2, 5)),  # Focal plane grid [m]
@@ -114,7 +114,7 @@ if __name__ == '__main__':
     except ImportError:
         pass
 
-    ax = plot_SNIFS(test=True, verbose=False)
+    ax = plot_SNIFS(test=True, verbose=True)
 
     embed_html = False
     if embed_html == 'mpld3':

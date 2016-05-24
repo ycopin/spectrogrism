@@ -17,14 +17,15 @@
 .. highlight:: python
    :linenothreshold: 3
 
-:Abstract: This module implements the spectrograph optical model used for the
-           *SuperNova Integral Field Spectrograph* [Lantz04]_ data-reduction
-           pipeline, and presented in [Copin00]_.  It provides a flexible
-           chromatic mapping between the input focal plane and the output
-           detector plane, based on an effective simplified ray-tracing model
-           of the key optical elements defining the spectrograph (collimator,
-           prism, grating, camera), described by a restricted number of
-           physically-motivated distortion parameters.
+:Abstract: This module initially implemented the spectrograph optical model
+           used for the TIGER-like integral field spectrograph (e.g. SAURON
+           [Bacon01]_ and SNIFS [Lantz04]_) data-reduction pipeline, and first
+           presented in [Copin00]_.  It provides a flexible chromatic mapping
+           between the input focal plane and the output detector plane, based
+           on an effective simplified ray-tracing model of the key optical
+           elements defining the spectrograph (collimator, prism, grating,
+           camera), described by a restricted number of physically-motivated
+           distortion parameters.
 
 Optical modeling
 ================
@@ -112,18 +113,22 @@ Distortions
 * A :class:`distortion.StructuredGrid` is a structured grid of
   (complex) 2D-positions, with plotting and distortion-adjustment
   facilities.
-* :class:`distortion.GeometricDistortion` implements the Brown-Conrady
-  (achromatic) distortion model.
+* :class:`distortion.GeometricDistortion` implements the full Brown-Conrady
+  (achromatic) distortion model, including radial and tangential components of
+  arbitrary orders.
 * :class:`distortion.ChromaticDistortion` is a minimal lateral-color
   distortion implementation.
 
 Near Infrared Spectrometer and Photometer (NISP)
-------------------------------------------------
+================================================
+
+Zemax simulations
+-----------------
 
 The :mod:`spectrogrism` optical model is used to simulate the *Near Infrared
 Spectrometer and Photometer* (NISP) of EUCLID, mimicking full sky-to-detector
-Zemax 1st-order simulations for a nominal NISP configuration (courtesy
-J. Zoubian).
+Zemax spectroscopic and photometric simulations for a nominal NISP
+configuration (courtesy J. Zoubian).
 
 .. raw:: html
   :file: _static/run_190315.html
@@ -166,8 +171,48 @@ J. Zoubian).
      corresponding to (+0.7, -4.2) mm for centered y-coordinates
    * input position (+0.4, +1.25) is missing the 1.85 µm wavelength
 
+NISP optical design
+-------------------
+
+The NISP optical design is presented in [Grupp12]_ and updated in [Grupp14]_
+(see :numref:`fig#nisp_optdesign`).
+
+.. _fig#nisp_optdesign:
+
+.. figure:: _static/NISP_optdesign.png
+   :width: 60%
+   :align: center
+
+   The EUCLID f#20 to f#10 relay system including filter and grating position
+   (from [Grupp12]_).
+
+It consists of:
+
+0. an f/20 1.2 m diameter Korsch type three mirror telescope in off-axis
+   configuration
+1. the Corrector Lens assembly CoLA (fused silica)
+2. depending on the observing mode:
+
+   **photometric mode (NISP-P)**: 
+     a filter with mildly powered spherical entrance surface and flat exit
+     surface (fused silica)
+
+   **spectroscopic mode (NISP-S)**:
+     a grism with mildly powered spherical entrance surface and binary optic
+     (curved line) grating exit surface (fused silica)
+   
+   These intrinsically static elements are placed in filter/grism wheels with
+   limited position repeatibility.
+   
+3. the Camera Lens assembly CaLA (CaF2/S-FTM16/S-FTM16), providing an f/10 beam.
+4. 16 2k×2k IR detectors
+
+The objective of this work is to assess the possibility to model in an
+effective way the NISP-S optical scheme in order to be able to predict
+multi-order spectrum locations from photometric catalogs.
+
 References
-----------
+==========
 
 * :download:`SNIFS optical parametrization <_static/SNFactory-SNIFS-02-002.pdf>`
   (SNfactory Technical Documentation)
@@ -178,8 +223,14 @@ References
 
 .. [Copin00] `2000PhDT.........6C
              <https://tel.archives-ouvertes.fr/tel-00001338/fr/>`_
+.. [Bacon01] `2001MNRAS.326...23B 
+             <http://adsabs.harvard.edu/abs/2001MNRAS.326...23B>`_
 .. [Lantz04] `2004SPIE.5249..146L
              <http://adsabs.harvard.edu/abs/2004SPIE.5249..146L>`_
+.. [Grupp12] `2012SPIE.8442E..0XG 
+             <http://adsabs.harvard.edu/abs/2012SPIE.8442E..0XG>`_
+.. [Grupp14] `2014SPIE.9143E..2XG 
+             <http://adsabs.harvard.edu/abs/2014SPIE.9143E..2XG>`_
 
 Code documentation
 ==================

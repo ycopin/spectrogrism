@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-05-02 18:50:45 ycopin>
+# Time-stamp: <2016-05-24 17:35:15 ycopin>
 
 """
 spectrogrism
@@ -32,16 +32,20 @@ Generic utilities for modeling grism-based spectrograph.
 
 from __future__ import division, print_function
 
-__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
-
 import warnings
 from collections import OrderedDict
+from functools import partial
 import cmath as C
 
 import numpy as N
 import pandas as PD
 
-from . import distortion as D
+try:
+    from . import distortion as D
+except ValueError:              # Attempted relative import in non-package
+    import distortion as D
+
+__author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
 
 # Print options
 LINEWIDTH = 70
@@ -81,8 +85,9 @@ class Configuration(OrderedDict):
 
     def __str__(self):
 
-        s = [" {} {!r} ".format(self.conftype, self.name).center(LINEWIDTH, '-')]
-        s += [ '  {:20s}: {}'.format(str(key), self[key])
+        s = [" {} {!r} "
+             .format(self.conftype, self.name).center(LINEWIDTH, '-')]
+        s += [ '  {:20}: {}'.format(str(key), self[key])
                for key in self.keys() ]
 
         return '\n'.join(s)
@@ -119,8 +124,7 @@ class Configuration(OrderedDict):
         with open(yamlname, 'r') as yamlfile:
             self = yaml.load(yamlfile)
 
-        print("Configuration {!r} loaded from {!r}"
-              .format(self.name, yamlname))
+        print("Configuration {!r} loaded from {!r}".format(self.name, yamlname))
 
         return self
 
@@ -195,6 +199,11 @@ class SimConfig(Configuration):
         else:
             raise NotImplementedError("Unsupported input coordinates.")
 
+        # Apply rotation if any
+        angle = self.get('input_angle', 0)   # [rad]
+        if angle:
+            coords *= C.exp(1j * angle)
+
         return coords
 
 
@@ -213,7 +222,8 @@ class Spectrum(PD.Series):
         :param str name: optional spectrum name (e.g. "Grism transmission")
         """
 
-        super(Spectrum, self).__init__(data=fluxes, index=wavelengths, name=name)
+        super(Spectrum, self).__init__(
+            data=fluxes, index=wavelengths, name=name)
 
         assert self.index.is_monotonic_increasing, \
             "Wavelengths not strictly increasing."
@@ -232,7 +242,7 @@ class Spectrum(PD.Series):
 
     def __str__(self):
 
-        return "{}{:d} px in [{:.2f}, {:.2f}] µm".format(
+        return "{}{:d} wavelengths in [{:.2f}, {:.2f}] µm".format(
             self.name + ': ' if self.name else '',
             len(self), self.index[0] / 1e-6, self.index[-1] / 1e-6)
 
@@ -265,7 +275,7 @@ class PointSource(object):
 
         :param complex coords: single source (complex) coordinates
         :param Spectrum spectrum: source spectrum (default to standard spectrum)
-        :param kwargs: propagated to :func:`Spectrum.default()` constructor
+        :param kwargs: propagated to :func:`Spectrum.default` constructor
         """
 
         self.coords = coords            #: 2D-position/direction
@@ -279,8 +289,10 @@ class PointSource(object):
 
     def __str__(self):
 
-        return "{0} at ({1.real:.6f}, {1.imag:.6f})".format(
-            self.spectrum, self.coords)
+        zmm = self.coords / 1e-3
+
+        return "{0} at ({1.real:+.2f}, {1.imag:+.2f}) mm".format(
+            self.spectrum, zmm)
 
 
 class DetectorPositions(PD.Panel):
@@ -599,7 +611,8 @@ class Material(object):
 
     def __str__(self):
 
-        return u"Material: {}, n(1 µm)={:.3f}".format(self.name, self.index(1e-6))
+        return u"Material: {}, n(1 µm)={:.3f}".format(
+            self.name, self.index(1e-6))
 
     def index(self, wavelengths):
         r"""
@@ -727,6 +740,8 @@ class CameraOrCollimator(object):
         b x - y = 0`.
 
         :return: real solution (or NaN if none)
+
+        .. deprecated:: 0.8
         """
 
         # Trivial cases
@@ -785,9 +800,8 @@ class Collimator(CameraOrCollimator):
             cdist = D.ChromaticDistortion(config.wref, lcoeffs)
 
         super(Collimator, self).__init__(flength, gdist, cdist)
-        self.gdist_K1 = dist_K1  # Backward compatibility
 
-    def forward(self, position, wavelengths, gamma):
+    def forward_deprecated(self, position, wavelengths, gamma):
         r"""
         Forward light propagation through the collimator.
 
@@ -795,7 +809,7 @@ class Collimator(CameraOrCollimator):
 
         .. math::
 
-          \tan\theta = r/f \times (1 + e(r/f)^2 + a(\lambda)/\gamma)
+          \tan\theta = (r/f) \times (1 + e \times (r/f)^2 + a(\lambda)/\gamma)
 
         where:
 
@@ -809,37 +823,64 @@ class Collimator(CameraOrCollimator):
         :param float gamma: spectrograph magnification (fcam/fcoll)
         :return: 2D-direction [rad]
         :rtype: complex
+
+        .. deprecated:: 0.8
         """
 
         warnings.warn(
-            "{}.forward is not yet adapted to generic GeometricDistortion"
+            "Use {}.forward for a generic GeometricDistortion-compatible implementation"
             .format(self.__class__.__name__), DeprecationWarning)
 
         r, phi = rect2pol(position)     # Modulus [m] and phase [rad]
         rr = r / self.flength           # Normalized radius
         tantheta = rr * (1 +
-                         self.gdist_K1 * rr ** 2 +
+                         self.gdist.Kcoeffs[0] * rr ** 2 +
                          self.cdist.amplitude(wavelengths) / gamma)
 
         return pol2rect(tantheta, phi + N.pi)  # Direction
 
-    def backward(self, direction, wavelength, gamma):
+    def backward_deprecated(self, direction, wavelength, gamma):
         """
         Backward light propagation through the collimator.
 
-        See :func:`Collimator.forward` for parameters.
+        See :func:`Collimator.forward_deprecated` for parameters.
+
+        .. deprecated:: 0.8
         """
 
         warnings.warn(
-            "{}.backward is not yet adapted to generic GeometricDistortion"
+            "Use {}.backward for a generic GeometricDistortion-compatible implementation"
             .format(self.__class__.__name__), DeprecationWarning)
 
         tantheta, phi = rect2pol(direction)
 
-        rovf = self.invert_camcoll(tantheta, self.gdist_K1,
+        rovf = self.invert_camcoll(tantheta, self.gdist.Kcoeffs[0],
                                    1 + self.cdist.amplitude(wavelength) / gamma)
 
         return pol2rect(rovf * self.flength, phi + N.pi)  # Position
+
+    def forward(self, positions, wavelengths, gamma):
+        r"""
+        Forward light propagation through the collimator.
+
+        The geometric distortion is applied on the (flipped) positions.
+        """
+
+        zu = - positions / self.flength  # Undistorted (flipped) directions
+        zd = self.gdist.forward(zu)      # Distorted directions
+        if self.cdist:                   # Add lateral colors
+            zd += zu * self.cdist.amplitude(wavelengths) / gamma
+
+        return zd
+
+    def backward(self, directions, wavelength, gamma):
+
+        if self.cdist:                   # Lateral colors
+            lcol = self.cdist.amplitude(wavelength) / gamma  # scalar
+        else:
+            lcol = 0.
+
+        return - self.flength * self.gdist.backward(directions, lcol=lcol)
 
 
 class Camera(CameraOrCollimator):
@@ -878,9 +919,8 @@ class Camera(CameraOrCollimator):
             cdist = D.ChromaticDistortion(config.wref, lcoeffs)
 
         super(Camera, self).__init__(flength, gdist, cdist)
-        self.gdist_K1 = dist_K1  # Backward compatibility
 
-    def forward(self, direction, wavelengths):
+    def forward_deprecated(self, direction, wavelengths):
         r"""
         Forward light propagation through the camera.
 
@@ -897,42 +937,73 @@ class Camera(CameraOrCollimator):
         :param complex direction: 2D-direction [rad]
         :param numpy.ndarray wavelengths: wavelengths [m]
         :return: 2D-position [m]
+
+        .. deprecated:: 0.8
         """
 
         warnings.warn(
-            "{}.forward is not yet adapted to generic GeometricDistortion"
+            "Use {}.forward for a generic GeometricDistortion-compatible implementation"
             .format(self.__class__.__name__), DeprecationWarning)
 
         tantheta, phi = rect2pol(direction)
-        rovf = (1 +
-                self.gdist_K1 * tantheta ** 2 +
-                self.cdist.amplitude(wavelengths)) * tantheta
+        rovf = tantheta * (1 +
+                           self.gdist.Kcoeffs[0] * tantheta ** 2 +
+                           self.cdist.amplitude(wavelengths))
 
         return pol2rect(
             rovf * self.flength, phi + N.pi)  # Flipped position
 
-    def backward(self, position, wavelength):
+    def backward_deprecated(self, position, wavelength):
         """
         Backward light propagation through the camera.
 
-        See :func:`Camera.forward` for parameters.
+        See :func:`Camera.forward_deprecated` for parameters.
+
+        .. deprecated:: 0.8
         """
 
         warnings.warn(
-            "{}.backward is not yet adapted to generic GeometricDistortion"
+            "Use {}.backward for a generic GeometricDistortion-compatible implementation"
             .format(self.__class__.__name__), DeprecationWarning)
 
         r, phi = rect2pol(position)     # Modulus [m] and phase [rad]
         tantheta = self.invert_camcoll(r / self.flength,
-                                       self.gdist_K1,
+                                       self.gdist.Kcoeffs[0],
                                        1 + self.cdist.amplitude(wavelength))
 
         return pol2rect(tantheta, phi + N.pi)  # Flipped direction
+
+    def forward(self, directions, wavelengths):
+        r"""
+        Forward light propagation through the camera.
+
+        The geometric distortion is applied on the (input) directions.
+        """
+
+        zd = self.gdist.forward(directions)  # Distorted (unflipped) directions
+        if self.cdist:
+            zd += directions * self.cdist.amplitude(wavelengths)
+
+        return - zd * self.flength           # Distorted (flipped) positions
+
+    def backward(self, positions, wavelength):
+        """
+        Backward light propagation through the camera.
+        """
+
+        if self.cdist:                   # Lateral colors
+            lcol = self.cdist.amplitude(wavelength)  # scalar
+        else:
+            lcol = 0.
+
+        return self.gdist.backward(- positions / self.flength, lcol=lcol)
 
 
 class Telescope(Camera):
 
     """
+    All-reflective telescope (no chromatic distortions).
+
     Convert a 2D-direction in the sky into a 2D-position in the focal plane.
     """
 
@@ -956,7 +1027,10 @@ class Telescope(Camera):
 
         # Initialize from CameraOrCollimator parent class
         super(Camera, self).__init__(flength, gdist, cdist=None)
-        self.gdist_K1 = dist_K1  # Backward compatibility
+
+        # Remove explicit dependency to wavelengths in Camera.forward and backward
+        self.forward = partial(super(Telescope, self).forward, wavelengths=None)
+        self.backward = partial(super(Telescope, self).backward, wavelength=None)
 
 
 class Prism(object):
@@ -1408,9 +1482,12 @@ class Grism(object):
         import scipy.optimize as SO
 
         k = N.sin(self.prism.angle) / (order * self.grating.rho / 1e-3)
-        f = lambda l: l - k * (self.prism.material.index(l) - 1)
 
-        lbda0 = SO.newton(f, 1e-6)  # Look around 1 µm
+        def objf(l):
+
+            return l - k * (self.prism.material.index(l) - 1)
+
+        lbda0 = SO.newton(objf, 1e-6)  # Look around 1 µm
 
         return lbda0
 
@@ -1572,20 +1649,18 @@ class Spectrograph(object):
         :rtype: :class:`numpy.ndarray`
         """
 
-        assert isinstance(source, PointSource), "source should be a PointSource."
+        assert isinstance(source, PointSource), \
+            "source should be a PointSource."
 
         wavelengths = source.spectrum.wavelengths
 
-        if self.telescope:
-            # Telescope
-            positions = self.telescope.forward(source.coords, wavelengths)
-        else:
-            positions = source.coords
+        # Telescope if any
+        positions = (self.telescope.forward(source.coords)
+                     if self.telescope else source.coords)
         # Collimator
         directions = self.collimator.forward(
             positions, wavelengths, self.gamma)
-        if is_spectred(mode):   # Spectroscopic mode
-            # Grism
+        if is_spectred(mode):   # Spectroscopic mode: grism
             directions = self.grism.forward(
                 directions, wavelengths, order=mode)
         # Camera
@@ -1616,11 +1691,9 @@ class Spectrograph(object):
             direction = self.grism.backward(direction, wavelength, order=mode)
         # Collimator
         position = self.collimator.backward(direction, wavelength, self.gamma)
-        if self.telescope:
-            # Telescope
-            coords = self.telescope.backward(position, wavelength)
-        else:
-            coords = position
+        # Telescope if any
+        coords = (self.telescope.backward(position)
+                  if self.telescope else position)
 
         return coords
 
@@ -1636,15 +1709,15 @@ class Spectrograph(object):
         """
 
         # Test source
-        if waves is None:
+        if waves is None:       # Single test wavelength
             waves = N.array([self.config.wref])
         source = PointSource(coords, Spectrum.default(waves))
 
         if verbose:
             print(" SPECTROGRAPH TEST - MODE {} "
                   .format(mode).center(LINEWIDTH, '='))
-            print("Input source:", source)
-            print("Wavelengths [µm]:", waves / 1e-6)
+            print("| Input source:", source)
+            print("| Wavelengths [µm]:", waves / 1e-6)
 
         spectred = is_spectred(mode)  # Spectroscopic mode
 
@@ -1652,56 +1725,58 @@ class Spectrograph(object):
 
         # Telescope
         if self.telescope:
-            fpositions = self.telescope.forward(source.coords, waves)
+            fpositions = self.telescope.forward(source.coords)
             if verbose:
-                print("Positions (tel, forward) [×1e6]:", fpositions * 1e6)
+                print("> Positions (tel.forward) [×1e6]:", fpositions * 1e6)
         else:
             fpositions = source.coords
 
         # Collimator
         fdirections = self.collimator.forward(fpositions, waves, self.gamma)
         if verbose:
-            print("Directions (coll, forward) [×1e6]:", fdirections * 1e6)
+            print("> Directions (coll.forward) [×1e6]:", fdirections * 1e6)
 
         if spectred:            # Spectroscopic mode
             # Grism
             fdirections = self.grism.forward(fdirections, waves, order=mode)
             if verbose:
-                print("Directions (grism, forward) [×1e6]:", fdirections * 1e6)
+                print("> Directions (grism.forward) [×1e6]:", fdirections * 1e6)
 
         # Camera
         dpositions = self.camera.forward(fdirections, waves)
         if verbose:
-            print("Positions (camera, forward) [mm]:", dpositions / 1e-3)
+            print("> Positions (camera.forward) [mm]:", dpositions / 1e-3)
 
         # Detector
         dpositions = self.detector.forward(dpositions)
         if verbose:
-            print("Positions (detector) [mm]:", dpositions / 1e-3)
+            print("> Positions (detector) [mm]:", dpositions / 1e-3)
 
         # Backward step-by-step ------------------------------
 
+        output = []             # Round-trip positions, to be compared to input
+
         # Loop over positions in detector plane
-        for lbda, dpos in zip(waves, dpositions):
+        for lbda, dpos in zip(waves, N.atleast_1d(dpositions)):
             if verbose:
-                print("Test position (detector) [mm]:", dpos / 1e-3,
+                print("| Test position (detector) [mm]:", dpos / 1e-3,
                       "Wavelength [µm]:", lbda / 1e-6)
 
             # Detector
             dpos = self.detector.backward(dpos)
             if verbose:
-                print("Direction (detector, backward) [mm]:", dpos / 1e-3)
+                print("< Direction (detector.backward) [mm]:", dpos / 1e-3)
 
             # Camera
             bdirection = self.camera.backward(dpos, lbda)
             if verbose:
-                print("Direction (camera, backward) [×1e6]:", bdirection * 1e6)
+                print("< Direction (camera.backward) [×1e6]:", bdirection * 1e6)
 
             if spectred:        # Spectroscopic mode
                 # Grism
                 bdirection = self.grism.backward(bdirection, lbda, order=mode)
                 if verbose:
-                    print("Direction (grism, backward) [×1e6]:",
+                    print("< Direction (grism.backward) [×1e6]:",
                           bdirection * 1e6)
 
             # Collimator
@@ -1710,24 +1785,28 @@ class Spectrograph(object):
 
             # Telescope
             if self.telescope:
-                tdirection = self.telescope.backward(fposition, lbda)
+                tdirection = self.telescope.backward(fposition)
                 if verbose:
-                    print("Position (coll, backward) [×1e6]:",
-                          fposition * 1e6)
-                    print("Direction (tel, backward) [×1e6]:",
-                          tdirection * 1e6)
-                    print("Input direction (reminder) [×1e6]:",
-                          source.coords * 1e6)
+                    print("< Position (coll.backward) [mm]:",
+                          fposition / 1e-3)
+                    print("< Direction (tel.backward) [×1e6]:",
+                          tdirection * 1e6,
+                          "---OK---"
+                          if N.isclose(tdirection, source.coords)
+                          else '***ERROR***')
 
-                return N.isclose(source.coords, tdirection)
+                output.append(tdirection)
             else:
                 if verbose:
-                    print("Focal-plane position (backward) [mm]:",
-                          fposition / 1e-3)
-                    print("Input position (reminder) [mm]:",
-                          source.coords / 1e-3)
+                    print("< Focal-plane position (backward) [mm]:",
+                          fposition / 1e-3,
+                          "---OK---"
+                          if N.isclose(fposition, source.coords)
+                          else '***ERROR***')
 
-                return N.isclose(source.coords, fposition)
+                output.append(fposition)
+
+        return N.allclose(source.coords, output)
 
     def predict_positions(self, simcfg, **kwargs):
         """
@@ -1741,20 +1820,17 @@ class Spectrograph(object):
 
         # Update simulation configuration on-the-fly
         if kwargs:
-            simcfg = SimConfig(simcfg)  # Make a copy, to leave input simcfg intact
+            # Make a copy, to leave input simcfg intact
+            simcfg = SimConfig(simcfg)
             simcfg.update(kwargs)
 
         # Input coordinates
         coords = simcfg.get_coordinates()      # 1D complex array
-        # Rotation in the input plane
-        angle = simcfg.get('input_angle', 0)   # [rad]
-        if angle:
-            coords *= C.exp(1j * angle)
 
         # Input source (coordinates will be updated later on)
         waves = simcfg.get_wavelengths(self.config)
 
-        # Detector positions
+        # Initiate detector positions
         detector = DetectorPositions(waves, coords,
                                      spectrograph=self,
                                      name=self.config.name)
@@ -1768,11 +1844,13 @@ class Spectrograph(object):
         # Simulated observing modes
         modes = simcfg.get('modes', [1])
 
-        # Simulate forward propagation for all focal-plane positions
+        # Simulate forward propagation for all input coordinates
         for mode in modes:      # Loop over observing modes
-            positions = N.array([ self.forward(PointSource(xy, spec), mode=mode)
-                                  for xy in coords ])  # (npos, nlbda)
-            df = PD.DataFrame(positions.T, index=waves, columns=coords)
+            positions = N.transpose([ self.forward(PointSource(xy, spec), mode=mode)
+                                      for xy in coords ])  # ([nlbda,] npos)
+            if positions.ndim == 1:                        # No chromatic dimension
+                positions = N.resize(positions, detector.shape[1:])  # Expand along wavelength
+            df = PD.DataFrame(positions, index=waves, columns=coords)
             detector.add_mode(mode, df)
 
         return detector
@@ -1840,7 +1918,7 @@ class Spectrograph(object):
 
         print(" Initial parameters ".center(LINEWIDTH, '-'))
         for name, value in zip(optparams, guessparams):
-            print("  {:20s}: {}".format(name, value))
+            print("  {:20}: {}".format(name, value))
 
         # Initial guess simulation
         mpositions = self.predict_positions(simcfg)
@@ -1878,7 +1956,7 @@ class Spectrograph(object):
         if result.success:
             print(" Adjusted parameters ".center(LINEWIDTH, '-'))
             for name, value in zip(optparams, N.atleast_1d(result.x)):
-                print("  {:20s}: {}".format(name, value))
+                print("  {:20}: {}".format(name, value))
             # Compute final RMS
             result.rms = (result.fun / len(modes)) ** 0.5  # [m]
             print("  RMS: {} mm = {} px"
