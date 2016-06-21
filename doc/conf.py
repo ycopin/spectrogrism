@@ -15,7 +15,8 @@
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-import sys, os
+import os
+import sys
 sys.path.insert(0, os.path.abspath('..'))
 
 # -- General configuration ------------------------------------------------
@@ -39,6 +40,7 @@ extensions = [
     'sphinx.ext.mathjax',       # or pngmath
     'sphinx.ext.viewcode',
     'sphinx.ext.inheritance_diagram',
+    'sphinx.ext.extlinks',
     # 'sphinx.ext.doctest',
     # 'sphinx.ext.coverage',
     # Other extensions
@@ -63,7 +65,12 @@ intersphinx_mapping = {
     'scipy': ('http://docs.scipy.org/doc/scipy/reference/', None),
     'matplotlib': ('http://matplotlib.org/', None),
     'pandas': ('http://pandas-docs.github.io/pandas-docs-travis/', None),
+    'iminuit': ('http://iminuit.readthedocs.io/en/latest/', None),
+    'emcee': ('http://dan.iel.fm/emcee/current/', None),
 }
+
+# Extlinks configuration
+extlinks = {'pypi': ('https://pypi.python.org/pypi/%s', '')}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

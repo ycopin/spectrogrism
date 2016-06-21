@@ -1,0 +1,3 @@
+.. automodule:: spectrogrism.mcmc
+   :members:
+   :undoc-members:

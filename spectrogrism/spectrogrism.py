@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-05-24 17:35:15 ycopin>
+# Time-stamp: <2016-06-21 18:48:18 ycopin>
 
 """
 spectrogrism
@@ -139,6 +139,22 @@ class Configuration(OrderedDict):
                         .format(key, self[key]))
         html.append("</table>")
         return ''.join(html)
+
+    def read_coeffs(self, name, start=0):
+        """Read keys 'name{i}' and return list `[name0, name1, ...]`."""
+
+        try:
+            # List all keys starting with 'name', and get maximum index
+            imax = max( int(key[len(name):])
+                        for key in self if key.startswith(name) )
+        except ValueError:      # No such key: return empty list
+            # print("No '{}' parameters".format(name))
+            return []
+        else:                   # Construct list from start to imax
+            print("Reading '{}' parameters for i={}...{}"
+                  .format(name + '#i', start, imax))
+            return [ self.get(name + str(i), 0)
+                     for i in range(start, imax + 1) ]
 
 
 class OptConfig(Configuration):
@@ -691,10 +707,6 @@ class CameraOrCollimator(object):
 
     """
     An optical element converting to and fro directions and positions.
-
-    .. autosummary::
-
-       invert_camcoll
     """
 
     def __init__(self, flength, gdist=None, cdist=None):
@@ -725,47 +737,11 @@ class CameraOrCollimator(object):
 
     def __str__(self):
 
-        s = "{}: f={:.1f} m".format(self.__class__.__name__, self.flength)
+        s = "{}: f={:.3f} m".format(self.__class__.__name__, self.flength)
         s += '\n  {}'.format(self.gdist)
         s += '\n  {}'.format(self.cdist)
 
         return s
-
-    @staticmethod
-    def invert_camcoll(y, e, b):
-        """
-        Invert :math:`y = x(ex^2 + b)`.
-
-        :func:`numpy.poly1d` solves polynomial equation :math:`e x^3 + 0 x^2 +
-        b x - y = 0`.
-
-        :return: real solution (or NaN if none)
-
-        .. deprecated:: 0.8
-        """
-
-        # Trivial cases
-        if y == 0:
-            return 0.
-        elif b == 0 and e == 0:
-            return N.nan
-        elif b == 0:
-            return (y / e) ** (1 / 3)
-        elif e == 0:
-            return y / b
-
-        poly = N.poly1d([e, 0, b, -y])
-        roots = poly.r
-
-        # Pure real roots
-        real_roots = [ root.real for root in roots if N.isclose(root.imag, 0) ]
-
-        if len(real_roots) == 1:   # A single real root
-            return real_roots[0]
-        elif len(real_roots) > 1:  # Multiple real roots: take the smallest
-            return real_roots[N.argmin(N.abs(real_roots))]
-        else:                      # No real roots
-            return N.nan
 
 
 class Collimator(CameraOrCollimator):
@@ -789,81 +765,39 @@ class Collimator(CameraOrCollimator):
 
         try:
             flength = config['collimator_flength']
-            dist_K1 = config.get('collimator_distortion', 0)
-            lcoeffs = config.get('collimator_lcolor_coeffs', [])
+            center = (config.get('collimator_gdist_x0', 0) +
+                      config.get('collimator_gdist_y0', 0) * 1j )
+            Kcoeffs = config.read_coeffs('collimator_gdist_K', start=1)
+            Pcoeffs = config.read_coeffs('collimator_gdist_P', start=1)
+            lcoeffs = config.read_coeffs('collimator_cdist_C', start=1)
         except KeyError as err:
             raise KeyError(
                 "Invalid configuration file: missing key {!r}"
                 .format(err.args[0]))
         else:
-            gdist = D.GeometricDistortion(0, [dist_K1])
+            gdist = D.GeometricDistortion(
+                center, Kcoeffs=Kcoeffs, Pcoeffs=Pcoeffs)
             cdist = D.ChromaticDistortion(config.wref, lcoeffs)
 
         super(Collimator, self).__init__(flength, gdist, cdist)
-
-    def forward_deprecated(self, position, wavelengths, gamma):
-        r"""
-        Forward light propagation through the collimator.
-
-        The collimator equation is:
-
-        .. math::
-
-          \tan\theta = (r/f) \times (1 + e \times (r/f)^2 + a(\lambda)/\gamma)
-
-        where:
-
-        * *f* is the focal length
-        * *e* is the :math:`r^2` radial distortion coefficient
-        * :math:`a(\lambda)` is the lateral color
-        * :math:`\gamma` is the spectrograph magnification
-
-        :param complex position: 2D-position in the focal plane [m]
-        :param numpy.ndarray wavelengths: wavelengths [m]
-        :param float gamma: spectrograph magnification (fcam/fcoll)
-        :return: 2D-direction [rad]
-        :rtype: complex
-
-        .. deprecated:: 0.8
-        """
-
-        warnings.warn(
-            "Use {}.forward for a generic GeometricDistortion-compatible implementation"
-            .format(self.__class__.__name__), DeprecationWarning)
-
-        r, phi = rect2pol(position)     # Modulus [m] and phase [rad]
-        rr = r / self.flength           # Normalized radius
-        tantheta = rr * (1 +
-                         self.gdist.Kcoeffs[0] * rr ** 2 +
-                         self.cdist.amplitude(wavelengths) / gamma)
-
-        return pol2rect(tantheta, phi + N.pi)  # Direction
-
-    def backward_deprecated(self, direction, wavelength, gamma):
-        """
-        Backward light propagation through the collimator.
-
-        See :func:`Collimator.forward_deprecated` for parameters.
-
-        .. deprecated:: 0.8
-        """
-
-        warnings.warn(
-            "Use {}.backward for a generic GeometricDistortion-compatible implementation"
-            .format(self.__class__.__name__), DeprecationWarning)
-
-        tantheta, phi = rect2pol(direction)
-
-        rovf = self.invert_camcoll(tantheta, self.gdist.Kcoeffs[0],
-                                   1 + self.cdist.amplitude(wavelength) / gamma)
-
-        return pol2rect(rovf * self.flength, phi + N.pi)  # Position
 
     def forward(self, positions, wavelengths, gamma):
         r"""
         Forward light propagation through the collimator.
 
-        The geometric distortion is applied on the (flipped) positions.
+        .. math:
+
+           z' = D(-z / f) - z/f \times L(\lambda) / \gamma
+
+        where:
+
+        * :math:`z = x + iy` is the complex position
+        * *D* is the :class:`D.GeometricDistortion` geometric distortion
+        * *L* is the :class:`D.ChromaticDistortion` lateral color
+        * :math:`\gamma` is the spectrograph magnification (fcam/fcoll)
+
+        The geometric distortion is therefore applied on the (flipped)
+        positions.
         """
 
         zu = - positions / self.flength  # Undistorted (flipped) directions
@@ -874,6 +808,11 @@ class Collimator(CameraOrCollimator):
         return zd
 
     def backward(self, directions, wavelength, gamma):
+        """
+        Backward light propagation through the collimator.
+
+        See :func:`Collimator.forward` for details.
+        """
 
         if self.cdist:                   # Lateral colors
             lcol = self.cdist.amplitude(wavelength) / gamma  # scalar
@@ -908,76 +847,37 @@ class Camera(CameraOrCollimator):
 
         try:
             flength = config['camera_flength']
-            dist_K1 = config.get('camera_distortion', 0)
-            lcoeffs = config.get('camera_lcolor_coeffs', [])
+            center = (config.get('camera_gdist_x0', 0) +
+                      config.get('camera_gdist_y0', 0) * 1j )
+            Kcoeffs = config.read_coeffs('camera_gdist_K', start=1)
+            Pcoeffs = config.read_coeffs('camera_gdist_P', start=1)
+            lcoeffs = config.read_coeffs('camera_cdist_C', start=1)
         except KeyError as err:
             raise KeyError(
                 "Invalid configuration file: missing key {!r}"
                 .format(err.args[0]))
         else:
-            gdist = D.GeometricDistortion(0, [dist_K1])
+            gdist = D.GeometricDistortion(
+                center, Kcoeffs=Kcoeffs, Pcoeffs=Pcoeffs)
             cdist = D.ChromaticDistortion(config.wref, lcoeffs)
 
         super(Camera, self).__init__(flength, gdist, cdist)
-
-    def forward_deprecated(self, direction, wavelengths):
-        r"""
-        Forward light propagation through the camera.
-
-        The camera equation is:
-
-        .. math:: r/f = \tan\theta  \times (1 + e\tan^2\theta + a(\lambda))
-
-        where:
-
-        * *f* is the focal length
-        * *e* is the :math:`r^2` radial distortion coefficient
-        * :math:`a(\lambda)` is the lateral color
-
-        :param complex direction: 2D-direction [rad]
-        :param numpy.ndarray wavelengths: wavelengths [m]
-        :return: 2D-position [m]
-
-        .. deprecated:: 0.8
-        """
-
-        warnings.warn(
-            "Use {}.forward for a generic GeometricDistortion-compatible implementation"
-            .format(self.__class__.__name__), DeprecationWarning)
-
-        tantheta, phi = rect2pol(direction)
-        rovf = tantheta * (1 +
-                           self.gdist.Kcoeffs[0] * tantheta ** 2 +
-                           self.cdist.amplitude(wavelengths))
-
-        return pol2rect(
-            rovf * self.flength, phi + N.pi)  # Flipped position
-
-    def backward_deprecated(self, position, wavelength):
-        """
-        Backward light propagation through the camera.
-
-        See :func:`Camera.forward_deprecated` for parameters.
-
-        .. deprecated:: 0.8
-        """
-
-        warnings.warn(
-            "Use {}.backward for a generic GeometricDistortion-compatible implementation"
-            .format(self.__class__.__name__), DeprecationWarning)
-
-        r, phi = rect2pol(position)     # Modulus [m] and phase [rad]
-        tantheta = self.invert_camcoll(r / self.flength,
-                                       self.gdist.Kcoeffs[0],
-                                       1 + self.cdist.amplitude(wavelength))
-
-        return pol2rect(tantheta, phi + N.pi)  # Flipped direction
 
     def forward(self, directions, wavelengths):
         r"""
         Forward light propagation through the camera.
 
-        The geometric distortion is applied on the (input) directions.
+        .. math:
+
+           z' = -[D(z) + z L(\lambda)] \times f
+
+        where:
+
+        * :math:`z = x + iy` is the complex position
+        * *D* is the :class:`D.GeometricDistortion` geometric distortion
+        * *L* is the :class:`D.ChromaticDistortion` lateral color
+
+        The geometric distortion is therefore applied on the (input) directions.
         """
 
         zd = self.gdist.forward(directions)  # Distorted (unflipped) directions
@@ -989,6 +889,8 @@ class Camera(CameraOrCollimator):
     def backward(self, positions, wavelength):
         """
         Backward light propagation through the camera.
+
+        See :func:`Camera.forward` for details.
         """
 
         if self.cdist:                   # Lateral colors
@@ -1017,20 +919,28 @@ class Telescope(Camera):
 
         try:
             flength = config['telescope_flength']
-            dist_K1 = config.get('telescope_distortion', 0)
+            center = (config.get('telescope_gdist_x0', 0) +
+                      config.get('telescope_gdist_y0', 0) * 1j )
+            Kcoeffs = config.read_coeffs('telescope_gdist_K', start=1)
+            Pcoeffs = config.read_coeffs('telescope_gdist_P', start=1)
         except KeyError as err:
             raise KeyError(
                 "Invalid configuration file: missing key {!r}"
                 .format(err.args[0]))
         else:
-            gdist = D.GeometricDistortion(0, [dist_K1])
+            gdist = D.GeometricDistortion(
+                center, Kcoeffs=Kcoeffs, Pcoeffs=Pcoeffs)
 
-        # Initialize from CameraOrCollimator parent class
+        # Initialize from CameraOrCollimator parent class (without
+        # chromatic aberration)
         super(Camera, self).__init__(flength, gdist, cdist=None)
 
-        # Remove explicit dependency to wavelengths in Camera.forward and backward
-        self.forward = partial(super(Telescope, self).forward, wavelengths=None)
-        self.backward = partial(super(Telescope, self).backward, wavelength=None)
+        # Remove explicit dependency to wavelengths in Camera.forward
+        # and backward
+        self.forward = partial(
+            super(Telescope, self).forward, wavelengths=None)
+        self.backward = partial(
+            super(Telescope, self).backward, wavelength=None)
 
 
 class Prism(object):
@@ -1846,10 +1756,12 @@ class Spectrograph(object):
 
         # Simulate forward propagation for all input coordinates
         for mode in modes:      # Loop over observing modes
-            positions = N.transpose([ self.forward(PointSource(xy, spec), mode=mode)
-                                      for xy in coords ])  # ([nlbda,] npos)
-            if positions.ndim == 1:                        # No chromatic dimension
-                positions = N.resize(positions, detector.shape[1:])  # Expand along wavelength
+            positions = N.transpose([
+                self.forward(PointSource(xy, spec), mode=mode)
+                for xy in coords ])  # ([nlbda,] npos)
+            if positions.ndim == 1:  # No chromatic dimension
+                # Expand along wavelength dimension
+                positions = N.resize(positions, detector.shape[1:])
             df = PD.DataFrame(positions, index=waves, columns=coords)
             detector.add_mode(mode, df)
 
@@ -1863,7 +1775,8 @@ class Spectrograph(object):
         for name, value in kwargs.iteritems():
             # Test parameter validity
             if name not in self.config:
-                raise KeyError("Unknown optical parameter '{}'".format(name))
+                # raise KeyError("Unknown optical parameter '{}'".format(name))
+                warnings.warn("Unknown optical parameter '{}'".format(name))
             # Update optical configuration
             self.config[name] = value
             # Update structure
@@ -1884,13 +1797,13 @@ class Spectrograph(object):
             else:
                 setattr(obj, attr, value)
 
-    def adjust(self, positions, simcfg, modes=None,
-               optparams=['telescope_flength',
-                          'collimator_flength',
-                          'camera_flength'], tol=1e-6):
+    def optimize(self, positions, simcfg, modes=None,
+                 optparams=['telescope_flength',
+                            'collimator_flength',
+                            'camera_flength'], tol=1e-6):
         """
-        Adjust optical parameters to match target detector positions,
-        according to simulation configuration.
+        :mod:`scipy.optimize` optical parameters to match target detector
+        positions, according to simulation configuration.
 
         :param DetectorPositions positions: target positions
         :param SimConfig simcfg: simulation configuration
@@ -1904,7 +1817,7 @@ class Spectrograph(object):
 
         import scipy.optimize as SO
 
-        print(" SPECTROGRAPH ADJUSTMENT ".center(LINEWIDTH, '='))
+        print(" SPECTROGRAPH ADJUSTMENT (scipy.optimize) ".center(LINEWIDTH, '='))
 
         # Simulation parameters
         if modes is None:
@@ -1935,15 +1848,16 @@ class Spectrograph(object):
         print("Total RMS: {} mm = {} px"
               .format(rms / 1e-3, rms / self.detector.pxsize))
 
-        def objfun(pars, positions):
+        def objfun(params, positions):
             """Sum of squared mean offset position."""
+
             # Update optical configuration
-            self.update(**dict(zip(optparams, pars)))
+            self.update(**dict(zip(optparams, params)))
             # Simulate
             mpositions = self.predict_positions(simcfg)
-            dtot = sum( ((mpositions.spectra[mode] -
-                          positions.spectra[mode]).abs() ** 2).values.mean()
-                        for mode in modes )
+            dtot = sum(
+                ((mpositions[mode] - positions[mode]).abs()**2).values.mean()
+                for mode in modes )
 
             return dtot
 
@@ -1952,7 +1866,9 @@ class Spectrograph(object):
                              args=(positions,),
                              method='tnc',
                              options={'disp': True, 'xtol': tol})
-        print("Minimization: {}".format(result.message))
+        print("Minimization {}: {}".format(
+            'succeeded' if result.success else 'failed', result.message))
+
         if result.success:
             print(" Adjusted parameters ".center(LINEWIDTH, '-'))
             for name, value in zip(optparams, N.atleast_1d(result.x)):
@@ -1963,6 +1879,102 @@ class Spectrograph(object):
                   .format(result.rms / 1e-3, result.rms / self.detector.pxsize))
 
         return result
+
+    def adjust(self, positions, simcfg, modes=None,
+               optparams=['telescope_flength',
+                          'collimator_flength',
+                          'camera_flength'], **options):
+        """
+        :pypi:`iminuit` adjustement of optical parameters to match target detector
+        positions, according to simulation configuration.
+
+        :param DetectorPositions positions: target positions
+        :param SimConfig simcfg: simulation configuration
+        :param list modes: adjusted observing modes (default: simulated modes)
+        :param list optparams: optical parameters to be adjusted
+        :param dict options: iminuit additional options
+        :return: result from the optimization
+        :rtype: :class:`iminuit.Minuit`
+        :raise KeyError: unknown optical parameter
+        """
+
+        from iminuit import Minuit
+
+        print(" SPECTROGRAPH ADJUSTMENT (Minuit) ".center(LINEWIDTH, '='))
+
+        # Simulation parameters
+        if modes is None:
+            modes = simcfg.get('modes', [1])
+        print("Adjusted modes:", modes)
+
+        try:
+            guessparams = [ self.config[name] for name in optparams ]
+        except KeyError:
+            raise KeyError("Unknown optical parameter '{}'".format(name))
+
+        kwargs = {'forced_parameters': optparams,  # objfun signature
+                  'errordef': 1}                   # Least-square
+
+        print(" Initial parameters ".center(LINEWIDTH, '-'))
+        for name, value in zip(optparams, guessparams):
+            print("  {:20}: {}".format(name, value))
+            kwargs.update(((name, value),
+                           ('error_' + name, abs(value) if value else 1e-3)))
+
+        # Initial guess simulation
+        mpositions = self.predict_positions(simcfg)
+        # Test compatibility with objective detector positions only once
+        mpositions.check_alignment(positions)
+
+        rmss = []
+        for mode in modes:
+            rms = positions.compute_rms(mpositions, mode=mode)
+            print("Mode {} RMS: {} mm = {} px"
+                  .format(mode, rms / 1e-3, rms / self.detector.pxsize))
+            rmss.append(rms)
+        rms = (sum( rms ** 2 for rms in rmss ) / len(modes)) ** 0.5
+        print("Total RMS:  {} mm = {} px"
+              .format(rms / 1e-3, rms / self.detector.pxsize))
+
+        def objfun(*args):
+            """Sum of squared mean offset position."""
+
+            # Update optical configuration
+            self.update(**dict(zip(optparams, args)))
+            # Simulate
+            mpositions = self.predict_positions(simcfg)
+            dtot = sum(
+                ((mpositions[mode] - positions[mode]).abs()**2).values.mean()
+                for mode in modes )
+
+            return dtot
+
+        kwargs.update(**options)
+
+        # Minuit optimizer
+        minuit = Minuit(objfun, **kwargs)
+        if kwargs.get('print_level', 0) >= 1:
+            minuit.print_param()
+
+        # Optimization
+        minuit.migrad()
+
+        print("Minuit minimization: {}".format(
+            'succeeded' if minuit.migrad_ok() else 'failed'))
+
+        if minuit.migrad_ok():
+            print(" Adjusted parameters ".center(LINEWIDTH, '-'))
+            for name in optparams:
+                print("  {:20}: {} +/- {}"
+                      .format(name, minuit.values[name], minuit.errors[name]))
+            # Update parameters to adjusted values
+            objfun(*minuit.args)
+            # Compute final RMS
+            rms = (minuit.fval / len(modes)) ** 0.5  # [m]
+            print("  RMS: {} mm = {} px"
+                  .format(rms / 1e-3, rms / self.detector.pxsize))
+
+        return minuit
 
 # Utility functions =======================================
 

@@ -1,0 +1,28 @@
+!!python/object/apply:spectrogrism.OptConfig
+args:
+- - [name, NISP-R]
+  - [wave_ref, 1.5e-06]
+  - - wave_range
+    - [1.25e-06, 1.85e-06]
+  - [telescope_flength, 24.5]
+  - [grism_dispersion, 9.8]
+  - [grism_prism_material, FS]
+  - [grism_grating_material, FS]
+  - [grism_prism_angle, 0.03630284844148206]
+  - [grism_grating_rho, 13.1]
+  - [grism_grating_blaze, 0.04537856055185257]
+  - [detector_pxsize, 1.8e-05]
+  - [collimator_flength, 1.926]
+  - [collimator_gdist_x0, 0.0007]
+  - [collimator_gdist_y0, 0.0341]
+  - [collimator_gdist_K1, 0.453]
+  - [grism_prism_tiltx, -0.009890199094634535]
+  - [grism_prism_tilty, 0.015126186850617524]
+  - [grism_prism_tiltz, 0.0008726646259971648]
+  - [camera_flength, 0.9765]
+  - [camera_gdist_x0, 0.0062]
+  - [camera_gdist_y0, 0.213]
+  - [camera_gdist_K1, -0.0585]
+  - [detector_dx, 0.000699]
+  - [detector_dy, 0.000949]
+state: {name: NISP-R}

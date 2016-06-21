@@ -188,7 +188,7 @@ The NISP optical design is presented in [Grupp12]_ and updated in [Grupp14]_
 
 It consists of:
 
-0. an f/20 1.2 m diameter Korsch type three mirror telescope in off-axis
+0. an *f/20* 1.2 m diameter Korsch type three mirror telescope in off-axis
    configuration
 1. the Corrector Lens assembly CoLA (fused silica)
 2. depending on the observing mode:
@@ -204,7 +204,7 @@ It consists of:
    These intrinsically static elements are placed in filter/grism wheels with
    limited position repeatibility.
    
-3. the Camera Lens assembly CaLA (CaF2/S-FTM16/S-FTM16), providing an f/10 beam.
+3. the Camera Lens assembly CaLA (CaF2/S-FTM16/S-FTM16), providing an *f/10* beam.
 4. 16 2k×2k IR detectors
 
 The objective of this work is to assess the possibility to model in an
@@ -242,6 +242,7 @@ Code documentation
    distortion
    snifs
    nisp
+   mcmc
 
 :ref:`genindex`
 

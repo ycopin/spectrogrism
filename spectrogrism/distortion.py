@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-05-18 19:27:23 ycopin>
+# Time-stamp: <2016-06-14 10:41:58 ycopin>
 
 """
 distortion
@@ -27,6 +27,16 @@ class StructuredGrid(object):
 
     """
     A structured 2D-grid, stored as a complex 2D-array.
+
+    .. autosummary::
+
+       create
+       reorder
+       plot
+       estimate_parameters
+       rms
+       adjust_distortion
+       plot_offsets
     """
 
     def __init__(self, xy):
@@ -342,10 +352,8 @@ class StructuredGrid(object):
 
         from iminuit import Minuit
 
-        assert self.signature == other.signature, \
-            "Incompatible grid signatures."
-        assert self.xy.shape == other.xy.shape, \
-            "Incompatible grid shapes."
+        assert self.signature == other.signature, "Incompatible grid signatures."
+        assert self.xy.shape == other.xy.shape, "Incompatible grid shapes."
 
         nkcoeff = len(gdist.Kcoeffs)
         npcoeff = len(gdist.Pcoeffs)
@@ -376,7 +384,7 @@ class StructuredGrid(object):
                      [ 'P%d' % i for i in range(1, npcoeff + 1) ]
 
         kwargs = {'forced_parameters': parameters,  # objfun signature
-                  'errordef': 1}  # Least-square
+                  'errordef': 1}                    # Least-square
 
         # Estimate position step size from position RMS
         xystep = (N.abs(self.xy)**2).mean()**0.5 * 1e-1
@@ -409,7 +417,7 @@ class StructuredGrid(object):
 
         # Minuit optimizer
         minuit = Minuit(objfun, **kwargs)
-        if kwargs.get('print_level', 0):
+        if kwargs.get('print_level', 0) >= 1:
             minuit.print_param()
 
         # Optimization
@@ -459,11 +467,11 @@ class GeometricDistortion(object):
     .. math::
 
        x_d &= x_u \times (1 + K_1 r^2 + K_2 r^4 + \ldots) \\
-       &+ \left(P_2(r^2 + 2x_u^2) + 2P_1 x_u y_u\right)
-       (1 + P_3 r^2 + P_4 r^4 + \ldots) \\
+           &+ \left(P_2(r^2 + 2x_u^2) + 2P_1 x_u y_u\right)
+              (1 + P_3 r^2 + P_4 r^4 + \ldots) \\
        y_d &= y_u \times (1 + K_1r^2 + K_2r^4 + \ldots) \\
-       &+ \left(P_1(r^2 + 2y_u^2) + 2P_2 x_u y_u\right)
-       (1 + P_3 r^2 + P_4 r^4 + \ldots)
+           &+ \left(P_1(r^2 + 2y_u^2) + 2P_2 x_u y_u\right)
+              (1 + P_3 r^2 + P_4 r^4 + \ldots)
 
     where:
 
@@ -487,6 +495,9 @@ class GeometricDistortion(object):
 
        forward
        backward
+       rescale
+       unscale
+       plot
     """
 
     def __init__(self, center=0, Kcoeffs=[], Pcoeffs=[],
@@ -509,10 +520,8 @@ class GeometricDistortion(object):
         self._polyk = N.polynomial.Polynomial([1] + list(Kcoeffs))
         # Tangential component
         if len(Pcoeffs):
-            if not len(Pcoeffs) >= 2:
-                raise ValueError("Pcoeffs should be empty or of length >= 2.")
             self.p1 = Pcoeffs[0]
-            self.p2 = Pcoeffs[1]
+            self.p2 = Pcoeffs[1] if len(Pcoeffs) >= 2 else 0
             self._polyp = N.polynomial.Polynomial([1] + list(Pcoeffs)[2:])
         else:
             self._polyp = None  # Will be used as a flag
@@ -547,6 +556,28 @@ class GeometricDistortion(object):
                    scale=scale, rotation=rotation, offset=offset)
 
     @property
+    def x0(self):
+        """x-coordinate of center of distortion."""
+
+        return self.center.real
+
+    @x0.setter
+    def x0(self, x0):
+
+        self.center = x0 + 1j * self.center.imag
+
+    @property
+    def y0(self):
+        """y-coordinate of center of distortion."""
+
+        return self.center.imag
+
+    @y0.setter
+    def y0(self, y0):
+
+        self.center = self.center.real + 1j * y0
+
+    @property
     def Kcoeffs(self):
         """Radial coefficients."""
 
@@ -578,7 +609,43 @@ class GeometricDistortion(object):
             self.p2 = coeffs[1]
             self._polyp.coef[1:] = coeffs[2:]
 
+    def __getattr__(self, attr):
+        """Get individual distortion coefficients 'Ki' or 'Pj'."""
+
+        if attr.startswith('K'):                    # Ki
+            # Could raise ValueError or KeyError
+            return self._polyk.coef[int(attr[1:])]
+        elif attr == 'P1':                          # P1
+            return self.p1
+        elif attr == 'P2':                          # P2
+            return self.p2
+        elif attr.startswith('P'):                  # Pi
+            # Could raise ValueError or KeyError
+            return self._polyp.coef[int(attr[1:]) - 2]
+        else:
+            return super(GeometricDistortion, self).__getattr__(attr)
+
+    def __setattr__(self, attr, value):
+        """Set individual distortion coefficients 'Ki' or 'Pj'."""
+
+        if attr.startswith('K'):                     # Ki
+            # Could raise ValueError or KeyError
+            self._polyk.coef[int(attr[1:])] = value
+        elif attr == 'P1':                           # P1
+            self.p1 = value
+        elif attr == 'P2':                           # P2
+            self.p2 = value
+        elif attr.startswith('P'):                   # Pi, i > 2
+            # Could raise ValueError or KeyError
+            self._polyp.coef[int(attr[1:]) - 2] = value
+        else:
+            super(GeometricDistortion, self).__setattr__(attr, value)
+
     def __nonzero__(self):
+        """
+        The distortion is non-null iff some coeffs were defined (even if
+        null).
+        """
 
         return len(self.Kcoeffs) or len(self.Pcoeffs)
 
@@ -593,28 +660,6 @@ class GeometricDistortion(object):
             s = "Null geometric distortion"
 
         return s
-
-    @property
-    def x0(self):
-        """x-coordinate of center of distortion."""
-
-        return self.center.real
-
-    @x0.setter
-    def x0(self, x0):
-
-        self.center = x0 + 1j * self.center.imag
-
-    @property
-    def y0(self):
-        """y-coordinate of center of distortion."""
-
-        return self.center.imag
-
-    @y0.setter
-    def y0(self, y0):
-
-        self.center = self.center.real + 1j * y0
 
     def rescale(self, xy):
         r"""
@@ -782,7 +827,7 @@ class ChromaticDistortion(object):
        amplitude
     """
 
-    def __init__(self, wref=0, coeffs=[]):
+    def __init__(self, wref=1e-6, coeffs=[]):
         """
         Initialize from reference wavelength and lateral color coefficients.
 
@@ -806,6 +851,29 @@ class ChromaticDistortion(object):
         """Expose non-null coefficients :math:`[c_{i \geq 1}]`."""
 
         return self._poly.coef[1:]  # ndarray
+
+    @coeffs.setter
+    def coeffs(self, coeffs):
+
+        self._poly.coef[1:] = coeffs
+
+    def __getattr__(self, attr):
+        """Get individual distortion coefficients 'Ci'."""
+
+        if attr.startswith('C'):                    # Ci
+            # Could raise ValueError or KeyError
+            return self._poly.coef[int(attr[1:])]
+        else:
+            return super(ChromaticDistortion, self).__getattr__(attr)
+
+    def __setattr__(self, attr, value):
+        """Set individual distortion coefficients 'Ci'."""
+
+        if attr.startswith('C'):                     # Ci
+            # Could raise ValueError or KeyError
+            self._poly.coef[int(attr[1:])] = value
+        else:
+            super(ChromaticDistortion, self).__setattr__(attr, value)
 
     def __nonzero__(self):
 
@@ -831,7 +899,7 @@ class ChromaticDistortion(object):
         :return: lateral color radial amplitude
         """
 
-        return self._poly(wavelengths - self.wref)
+        return self._poly(wavelengths / self.wref - 1)
 
 
 if __name__ == '__main__':

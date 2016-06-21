@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-05-17 17:32:52 ycopin>
+# Time-stamp: <2016-06-21 19:12:45 ycopin>
 
 """
 nisp
@@ -46,7 +46,7 @@ NISP_R = S.OptConfig([
     ('grism_dispersion', 9.8),            # Rough spectral dispersion [AA/px]
     ('grism_prism_material', 'FS'),       # Prism glass
     ('grism_grating_material', 'FS'),     # Grating resine
-    ('grism_prism_angle', 2.88 / S.RAD2DEG),   # Prism angle [rad]
+    ('grism_prism_angle', 2.08 / S.RAD2DEG),   # Prism angle [rad]
     # ('grism_grating_rho', 19.29),       # Grating groove density [lines/mm]
     ('grism_grating_rho', 13.72),         # Grating groove density [lines/mm]
     ('grism_grating_blaze', 2.6 / S.RAD2DEG),  # Blaze angle [rad]
@@ -56,26 +56,32 @@ NISP_R = S.OptConfig([
 
 # Guessed values (not from official documents)
 NISP_R.update([
-    # Telescope
-    ('telescope_flength', 25.2),         # Telescope focal length [m]
-    # Collimator
-    ('collimator_flength', 1946e-3),     # Focal length [m]
-    ('collimator_distortion', 2.8e-3),
-    # Grism
-    ('grism_prism_angle', 2.70 / S.RAD2DEG),  # Prism angle [rad]
-    ('grism_grating_rho', 13.1),   # Grating groove density [lines/mm]
-    ('grism_prism_tiltx', 0),   # Prism x-tilt (around apex/groove axis) [rad]
-    ('grism_prism_tilty', 0),   # Prism y-tilt [rad]
-    ('grism_prism_tiltz', 0),   # Prism z-tilt (around optical axis) [rad]
-    # Camera
-    ('camera_flength', 957e-3),    # Focal length [m]
-    ('camera_distortion', 29.6e-3),
-    # Detector (without input recentering)
+    # Telescope ------------------------------
+    # Collimator ------------------------------
+    ('collimator_flength', 1924e-3),  # Focal length [m]
+    ('collimator_gdist_x0', -0.31e-3),    # Distortion offset
+    ('collimator_gdist_y0', 54.6e-3),  # Distortion offset
+    ('collimator_gdist_K1', 447e-3),  # Radial distortion
+    # ('collimator_gdist_P1', +5.4e-5), ('collimator_gdist_P2', -7.2e-5),
+    # Grism ------------------------------
+    ('grism_prism_angle', 2.078 / S.RAD2DEG),   # Prism angle [rad]
+    ('grism_grating_rho', 13.09),  # Grating groove density [lines/mm]
+    ('grism_prism_tiltx', -362. / S.RAD2MIN),  # Prism x-tilt (around apex/groove axis) [rad]
+    ('grism_prism_tilty', +22.6 / S.RAD2MIN),  # Prism y-tilt [rad]
+    ('grism_prism_tiltz', +7.59 / S.RAD2MIN),  # Prism z-tilt (around optical axis) [rad]
+    # Camera ------------------------------
+    ('camera_flength', 975.5e-3),               # Focal length [m]
+    ('camera_gdist_x0', 1.8e-3),
+    ('camera_gdist_y0', 218.5e-3),
+    ('camera_gdist_K1', -62.5e-3),
+    # ('camera_gdist_P1', 0e-5), ('camera_gdist_P2', -1.0e-5),
+    # Detector ------------------------------
+    # Without input recentering
     # ('detector_dx', +0.70e-3),                 # Detector x-offset [m]
     # ('detector_dy', +179.7e-3),                # Detector y-offset [m]
-    # Detector (with input offset of -0.85 deg)
-    ('detector_dx', +0.70e-3),           # Detector x-offset [m]
-    ('detector_dy', -4.20e-3),           # Detector y-offset [m]
+    # With input offset of -0.85 deg
+    ('detector_dx', +656e-6),           # Detector x-offset [m]
+    ('detector_dy', +880e-6),           # Detector y-offset [m]
 ])
 
 
@@ -176,7 +182,8 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
         """
 
         if 'mm' not in colname:  # Input coords are supposed to be in mm
-            raise NotImplementedError("Only output columns in mm are supported.")
+            raise NotImplementedError(
+                "Only output columns in mm are supported.")
 
         data = N.genfromtxt(filename, dtype=None, names=cls.colnames)
 
@@ -329,6 +336,49 @@ if __name__ == '__main__':
     except ImportError:
         pass
 
+    subsampling = 3          # Subsample output plot
+    adjust = [               # Adjusted optical parameters (all modes)
+        # # 'telescope_gdist_K1', 'telescope_gdist_y0',
+        # 'collimator_flength',
+        # 'collimator_gdist_x0', 'collimator_gdist_y0', 'collimator_gdist_K1',
+        # # 'collimator_gdist_P1', 'collimator_gdist_P2',
+        # 'camera_flength',
+        # 'camera_gdist_x0', 'camera_gdist_y0', 'camera_gdist_K1',
+        # # 'camera_gdist_P1', 'camera_gdist_P2',
+        # 'detector_dx', 'detector_dy',
+    ]
+    adjust_phot = [          # Adjusted photometric optical parameters
+        # 'telescope_gdist_K1', 'telescope_gdist_y0',
+        # 'collimator_gdist_x0', 'collimator_gdist_y0', 'collimator_gdist_K1',
+        # 'camera_gdist_x0', 'camera_gdist_y0', 'camera_gdist_K1',
+        # 'detector_dx', 'detector_dy',
+    ]
+    adjust_spec = [          # Adjust spectroscopic parameters
+        # 'telescope_gdist_K1', 'telescope_gdist_y0',
+        # 'collimator_gdist_x0', 'collimator_gdist_y0',
+        # 'collimator_gdist_K1',
+        # 'collimator_cdist_C1',
+        # 'grism_prism_angle', 'grism_grating_rho',
+        # 'grism_prism_tiltx', 'grism_prism_tilty', 'grism_prism_tiltz',
+        # 'camera_gdist_x0', 'camera_gdist_y0',
+        # 'camera_gdist_K1',
+        # 'camera_cdist_C1',
+        # 'detector_dx', 'detector_dy',
+    ]
+    mcmc_params = [                    # MCMC exploration
+        'collimator_gdist_x0', 'collimator_gdist_y0',
+        'collimator_gdist_K1',
+        'camera_gdist_x0', 'camera_gdist_y0',
+        'camera_gdist_K1',
+        'detector_dx', 'detector_dy',
+    ]
+
+    embed_html = False          # Generate MPLD3 figure
+    plot_offset = True          # Offset plots
+    load_config = 'data/nisp_adjusted2.yml' and False
+    save_config = 'data/nisp_adjusted2.yml' and False
+
+    # Zemax simulations
     simulations = S.Configuration([
         ("name", "Zemax"),
         (1, "data/run_190315.dat"),            # 1st-order dispersed simulation
@@ -336,79 +386,115 @@ if __name__ == '__main__':
         (2, "data/run_161115_conf2_o2.dat"),   # 2nd-order dispersed simulation
         ('J', "data/run_071215_conf6_J.dat"),  # J-band undispersed simulation
     ])
+    print(simulations)
 
-    subsampling = 3             # Subsample output plot
-    adjust = False              # Test optical parameter adjustment
-    embed_html = False          # Generate MPLD3 figure
-    plot_offset = False         # Offset plots
-
-    # Zemax simulations
     zmx_pos = ZemaxPositions(simulations)
     print(zmx_pos)
 
-    # Optical modeling
-    optcfg = NISP_R                 # Optical configuration (default NISP)
+    if False:                   # Plot input positions
+        ax = zmx_pos.plot_input()
+
+    # Optical model
+    if load_config:
+        optcfg = S.OptConfig.load(load_config)
+    else:
+        optcfg = NISP_R             # Optical configuration (default NISP)
+
     simcfg = zmx_pos.get_simcfg()   # Simulation configuration
 
     spectro = S.Spectrograph(optcfg,
                              telescope=S.Telescope(optcfg))
     print(spectro)
 
-    # Tests
+    # Round-trip coherence test =============================
+
     print(" Spectrograph round-trip test ".center(S.LINEWIDTH, '-'))
     for mode in zmx_pos.modes:                  # Loop over all observing modes
         if not spectro.test(
                 waves=zmx_pos.wavelengths,      # Test on all input wavelengths
                 coords=zmx_pos.coordinates[0],  # Test on 1st input coordinates
                 mode=mode, verbose=False):
-            warnings.warn("{}: backward modeling does not match."
+            warnings.warn("{}: forward and backward models do not match."
                           .format(S.str_mode(mode)))
         else:
             print("{}: OK".format(S.str_mode(mode)))
 
-    # Spectroscopic modes ==============================
+    # Predictions and adjustments ==============================
 
-    spec_pos = spectro.predict_positions(simcfg, modes=zmx_pos.orders)
-    spec_pos.check_alignment(zmx_pos)
+    # Input Zemax positions
+    kwargs = dict(s=20, edgecolor='k', linewidths=1)  # Outlined symbols
+    ax = zmx_pos.plot_output(modes=zmx_pos.bands, **kwargs)
 
-    # Plots
-    # ax = zmx_pos.plot_input()
+    if adjust:             # Optical adjustment on *all* modes
+        minuit = spectro.adjust(zmx_pos, simcfg,
+                                modes=zmx_pos.modes, optparams=adjust)
 
+    drms = {}
+
+    # Imagery modes ------------------------------
+
+    if adjust_phot:             # Optical adjustment on photometric modes
+        minuit = spectro.adjust(zmx_pos, simcfg,
+                                modes=zmx_pos.bands, optparams=adjust_phot)
+
+    # Predict positions on photometric modes
+    phot_pos = spectro.predict_positions(simcfg, modes=zmx_pos.bands)
+    phot_pos.check_alignment(zmx_pos)
+
+    kwargs = {}                 # Default
+    for band in zmx_pos.bands:  # Loop over photometric bands
+        # Compute RMS on positions
+        drms[band] = zmx_pos.compute_rms(phot_pos, mode=band)
+        print("Band   {}: RMS = {:.4f} mm = {:.2f} px".format(
+            band, drms[band] / 1e-3, drms[band] / spectro.detector.pxsize))
+        phot_pos.plot(ax=ax, zorder=0,  # Draw below Zemax
+                      modes=(band,),
+                      label="{} {} (RMS={:.1f} px)".format(
+                          phot_pos.name, band,
+                          drms[band] / spectro.detector.pxsize),
+                      **kwargs)
+
+    ax.axis([-100, +100, -100, +100])               # [mm]
+    ax.set_aspect('equal', adjustable='datalim')
+    ax.legend(loc='upper left', fontsize='small', frameon=True, framealpha=0.5)
+
+    if plot_offset:             # Residual quiver plots
+        fig, axs = P.subplots(1, len(zmx_pos.bands), squeeze=False)
+        for ax, band in zip(axs.ravel(), zmx_pos.bands):
+            zmx_pos.plot_offsets(phot_pos, ax=ax, mode=band)
+            ax.set_aspect('equal', adjustable='box')
+            ax.set_title("Band {} (RMS={:.1f} px)"
+                         .format(band, drms[band] / spectro.detector.pxsize))
+
+    # Spectroscopic modes ------------------------------
+
+    # Input Zemax positions
     kwargs = dict(s=20, edgecolor='k', linewidths=1)  # Outlined symbols
     ax = zmx_pos.plot_output(modes=zmx_pos.orders,
                              subsampling=subsampling, **kwargs)
+
+    if adjust_spec:        # Optical adjustment on spectroscopic modes
+        minuit = spectro.adjust(zmx_pos, simcfg,
+                                modes=zmx_pos.orders, optparams=adjust_spec)
+
+    # Predict positions on spectroscopic modes
+    spec_pos = spectro.predict_positions(simcfg, modes=zmx_pos.orders)
+    spec_pos.check_alignment(zmx_pos)
 
     # kwargs = dict(edgecolor=None, facecolor='none', linewidths=1)  # Open symbols
     kwargs = {}                   # Default
     for order in zmx_pos.orders:  # Loop over spectroscopic dispersion orders
         # Compute RMS on current order positions
-        rms = zmx_pos.compute_rms(spec_pos, mode=order)
+        drms[order] = zmx_pos.compute_rms(spec_pos, mode=order)
         print("Order #{}: RMS = {:.4f} mm = {:.2f} px".format(
-            order, rms / 1e-3, rms / spectro.detector.pxsize))
+            order, drms[order] / 1e-3, drms[order] / spectro.detector.pxsize))
         spec_pos.plot(ax=ax, zorder=0,  # Draw below Zemax
                       modes=(order,), blaze=(order != 1),
                       subsampling=subsampling,
                       label="{} #{} (RMS={:.1f} px)".format(
                           spec_pos.name, order,
-                          rms / spectro.detector.pxsize),
+                          drms[order] / spectro.detector.pxsize),
                       **kwargs)
-
-    if adjust:                  # Optical adjustment
-        result = spectro.adjust(
-            zmx_pos, simcfg, tol=1e-4,
-            optparams=[
-                'detector_dy',  # 'detector_dx',
-                'grism_prism_tiltz',
-                # 'telescope_flength', 'collimator_flength', 'camera_flength',
-                # 'collimator_distortion', 'camera_distortion',
-            ])
-        if result.success:          # Adjusted model
-            spec_pos_fit = spectro.predict_positions(simcfg)
-            spec_pos_fit.plot(ax=ax, zorder=0,
-                              subsampling=subsampling,
-                              label="Adjusted {} (RMS={:.1f} px)".format(
-                                  spec_pos.name,
-                                  result.rms / spectro.detector.pxsize))
 
     ax.axis([-100, +100, -100, +100])               # [mm]
     ax.set_aspect('equal', adjustable='datalim')
@@ -421,34 +507,69 @@ if __name__ == '__main__':
         except ImportError:
             warnings.warn("MPLD3 is not available, cannot export to HTML.")
 
-    # Position offset quiver plots
-    if plot_offset:
-        for order in zmx_pos.orders:
-            ax = zmx_pos.plot_offsets(spec_pos, mode=order)
+    if plot_offset:             # Residual quiver plots
+        fig, axs = P.subplots(1, len(zmx_pos.orders), squeeze=False)
+        for ax, order in zip(axs.ravel(), zmx_pos.orders):
+            zmx_pos.plot_offsets(spec_pos, ax=ax, mode=order)
+            ax.set_aspect('equal', adjustable='box')
+            ax.set_title("Order #{} (RMS={:.1f} px)"
+                         .format(order, drms[order] / spectro.detector.pxsize))
 
-    # Imagery modes ==============================
+    # Save final configuration
+    if save_config:
+        optcfg.save(save_config)
 
-    phot_pos = spectro.predict_positions(simcfg, modes=zmx_pos.bands)
-    phot_pos.check_alignment(zmx_pos)
+    # MCMC sampling
+    if mcmc_params:
+        import cPickle as pickle
+        import mcmc
 
-    kwargs = dict(s=20, edgecolor='k', linewidths=1)  # Outlined symbols
-    ax = zmx_pos.plot_output(modes=zmx_pos.bands, **kwargs)
+        chain_name = "data/chains3"
+        pklname = chain_name + '.pkl'
+        burnin = 200
 
-    kwargs = {}                 # Default
-    for band in zmx_pos.bands:  # Loop over photometric bands
-        # Compute RMS on positions
-        rms = zmx_pos.compute_rms(phot_pos, mode=band)
-        print("Band   {}: RMS = {:.4f} mm = {:.2f} px".format(
-            band, rms / 1e-3, rms / spectro.detector.pxsize))
-        phot_pos.plot(ax=ax, zorder=0,  # Draw below Zemax
-                      modes=(band,),
-                      label="{} {} (RMS={:.1f} px)".format(
-                          phot_pos.name, band,
-                          rms / spectro.detector.pxsize),
-                      **kwargs)
+        if False:
+            print(" SPECTROGRAPH EXPLORATION (MCMC) ".center(S.LINEWIDTH, '='))
 
-    ax.axis([-100, +100, -100, +100])               # [mm]
-    ax.set_aspect('equal', adjustable='datalim')
-    ax.legend(loc='upper left', fontsize='small', frameon=True, framealpha=0.5)
+            assert mcmc_params == [
+                'collimator_gdist_x0', 'collimator_gdist_y0',
+                'collimator_gdist_K1',
+                'camera_gdist_x0', 'camera_gdist_y0',
+                'camera_gdist_K1',
+                'detector_dx', 'detector_dy',
+            ]
+
+            def lnprior_flat(params):
+                """Hard-coded flat prior."""
+
+                limits = [
+                    (-1e-2, +1e-2),  # collimator_gdist_x0
+                    (-0.1, 0.2),     # collimator_gdist_y0
+                    (0.3, 0.6),      # collimator_gdist_K1
+                    (-1e-2, +1e-2),  # camera_gdist_x0
+                    (0.1, 0.35),     # camera_gdist_y0
+                    (-0.2, 0.1),     # camera_gdist_K1
+                    (-2e-3, +4e-3),  # detector_dx
+                    (-2e-3, +4e-3),  # detector_dy
+                ]
+
+                for value, (vmin, vmax) in zip(params, limits):
+                    if not vmin < value < vmax:
+                        return -N.inf
+
+                return 0
+
+            chains = mcmc.run_mcmc(spectro, zmx_pos, simcfg,
+                                   mcmc_params, lnprior_flat,
+                                   modes=zmx_pos.modes)
+            pickle.dump(chains, open(pklname, 'w'), protocol=-1)
+            print("MCMC chains saved in", pklname)
+        else:
+            chains = pickle.load(open(pklname, 'r'))
+            print("MCMC chains loaded from", pklname)
+
+        fig = mcmc.plot_mcmc_chains(chains, mcmc_params)
+        fig = mcmc.plot_mcmc_corner(chains, mcmc_params, burnin=burnin)
+        mcmc.mcmc_best_params(chains, mcmc_params, burnin=burnin)
 
     P.show()
