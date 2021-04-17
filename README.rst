@@ -1,6 +1,8 @@
 Grism-based Spectrograph Modeling
 =================================
 
+**NEW REPO:** https://gitlab.in2p3.fr/ycopin/spectrogrism
+
 .. image:: https://readthedocs.org/projects/spectrogrism/badge/?version=latest
    :target: http://spectrogrism.readthedocs.org/en/latest/?badge=latest
    :alt: SpectroGrism Documentation Status
