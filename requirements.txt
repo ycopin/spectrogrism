@@ -1,6 +1,8 @@
-numpy
-pandas
+numpy>=1.11
+pandas==0.17
 matplotlib
+astropy
 nbsphinx==0.2.6
 iminuit
-astropy
+emcee
+corner

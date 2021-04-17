@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Time-stamp: <2016-06-21 19:12:45 ycopin>
+# Time-stamp: <2019-03-31 23:10 ycopin@lyonovae03.in2p3.fr>
 
 """
 nisp
@@ -82,6 +82,11 @@ NISP_R.update([
     # With input offset of -0.85 deg
     ('detector_dx', +656e-6),           # Detector x-offset [m]
     ('detector_dy', +880e-6),           # Detector y-offset [m]
+])
+
+NISP_Y = S.OptConfig([
+    ('name', "NISP-Y"),                   # Configuration name
+    ('wave_range', [952e-9, 1214e-9]),    # Wavelength range [m]
 ])
 
 
@@ -213,7 +218,7 @@ ee50mm ee80mm ee90mm ellpsf papsfdeg""".split()  #: Input column names
                        'xyinrad': S.DetectorPositions.digits})
 
         # Convert column 'xyinrad' into columns
-        pivot = df.pivot("wave", "xyinrad", "xyoutm")
+        pivot = df.pivot(index="wave", columns="xyinrad", values="xyoutm")
 
         # Make sure wavelengths and input complex coordinates are sorted
         pivot.sort_index(inplace=True)
@@ -366,11 +371,11 @@ if __name__ == '__main__':
         # 'detector_dx', 'detector_dy',
     ]
     mcmc_params = [                    # MCMC exploration
-        'collimator_gdist_x0', 'collimator_gdist_y0',
-        'collimator_gdist_K1',
-        'camera_gdist_x0', 'camera_gdist_y0',
-        'camera_gdist_K1',
-        'detector_dx', 'detector_dy',
+        # 'collimator_gdist_x0', 'collimator_gdist_y0',
+        # 'collimator_gdist_K1',
+        # 'camera_gdist_x0', 'camera_gdist_y0',
+        # 'camera_gdist_K1',
+        # 'detector_dx', 'detector_dy',
     ]
 
     embed_html = False          # Generate MPLD3 figure
